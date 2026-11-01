@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: bricdoc-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: oregon
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://bricdoc.vercel.app
+      - key: GEMINI_API_KEY
+        sync: false

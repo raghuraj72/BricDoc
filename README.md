@@ -3,8 +3,10 @@
 ![BricDoc Platform](https://img.shields.io/badge/Platform-BricDoc%20v1.0-4f46e5?style=for-the-badge)
 ![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%2B%20Python%203.14-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Frontend-Next.js%2015%20App%20Router-black?style=for-the-badge&logo=next.js&logoColor=white)
-![Tests](https://img.shields.io/badge/Automated%20Tests-19%2F19%20Passing-success?style=for-the-badge)
-![License](https://img.shields.io/badge/License-Proprietary-blue?style=for-the-badge)
+![Vercel](https://img.shields.io/badge/Deploy-Vercel-black?style=for-the-badge&logo=vercel&logoColor=white)
+![Tests](https://img.shields.io/badge/Automated%20Tests-20%2F20%20Passing-success?style=for-the-badge)
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fraghuraj72%2FBricDoc&root-directory=frontend&env=NEXT_PUBLIC_API_URL&envDescription=Public%20Backend%20API%20URL%20(e.g.%20https%3A%2F%2Fbricdoc-api.onrender.com%2Fapi%2Fv1))
 
 BricDoc is a production-grade, all-in-one document productivity platform. It combines full-fidelity PDF manipulation, bidirectional office conversions, grounded AI document analysis with verifiable page citations, private cloud vault storage, and a structured path to a published Google Play Store Android app.
 

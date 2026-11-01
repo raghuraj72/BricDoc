@@ -28,6 +28,10 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8005",
         "capacitor://localhost",
         "https://localhost",
+    ] + [
+        origin.strip()
+        for origin in os.getenv("CORS_ORIGINS", "").split(",")
+        if origin.strip()
     ]
     
     # Database (Defaults to SQLite for local zero-dependency operation, easily overriden to PostgreSQL)
