@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { api } from "@/lib/api";
+import { api, API_BASE } from "@/lib/api";
 import { formatBytes, formatDate } from "@/lib/utils";
 import {
   Layers,
@@ -208,7 +208,7 @@ export default function DashboardPage() {
 
                 <div className="flex items-center gap-2">
                   <a
-                    href={`/api/v1/documents/${doc.id}/download`}
+                    href={`${API_BASE}/documents/${doc.id}/download`}
                     className="p-2 text-slate-500 hover:text-brand-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
                     title="Download"
                   >

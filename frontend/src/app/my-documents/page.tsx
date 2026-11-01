@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { api } from "@/lib/api";
+import { api, API_BASE } from "@/lib/api";
 import { formatBytes, formatDate } from "@/lib/utils";
 import {
   FolderLock,
@@ -188,7 +188,7 @@ export default function MyDocumentsPage() {
                     <td className="py-3.5 px-4 text-right">
                       <div className="inline-flex items-center gap-1">
                         <a
-                          href={`/api/v1/documents/${doc.id}/download`}
+                          href={`${API_BASE}/documents/${doc.id}/download`}
                           className="p-1.5 text-slate-500 hover:text-brand-600 rounded"
                           title="Download"
                         >

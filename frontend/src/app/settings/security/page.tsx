@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { API_BASE } from "@/lib/api";
 import { Lock, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function SecuritySettingsPage() {
@@ -25,7 +26,7 @@ export default function SecuritySettingsPage() {
     }
 
     try {
-      const res = await fetch("/api/v1/auth/change-password", {
+      const res = await fetch(`${API_BASE}/auth/change-password`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

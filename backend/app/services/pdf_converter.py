@@ -166,6 +166,10 @@ class PDFConverter:
     @staticmethod
     def docx_to_pdf(docx_bytes: bytes) -> bytes:
         """Convert DOCX file into clean PDF via paragraph and table parsing."""
+        import html
+        from reportlab.platypus import Table, TableStyle
+        from reportlab.lib import colors
+
         doc = docx.Document(io.BytesIO(docx_bytes))
         buffer = io.BytesIO()
         pdf = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=54, rightMargin=54, topMargin=54, bottomMargin=54)
@@ -173,15 +177,42 @@ class PDFConverter:
         story = []
 
         for p in doc.paragraphs:
-            text = p.text.strip()
-            if text:
+            raw_text = p.text.strip()
+            if raw_text:
+                safe_text = html.escape(raw_text).replace("\n", "<br/>")
                 if p.style.name.startswith("Heading 1"):
-                    story.append(Paragraph(text, styles["Heading1"]))
+                    story.append(Paragraph(safe_text, styles["Heading1"]))
                 elif p.style.name.startswith("Heading 2"):
-                    story.append(Paragraph(text, styles["Heading2"]))
+                    story.append(Paragraph(safe_text, styles["Heading2"]))
+                elif p.style.name.startswith("Heading 3"):
+                    story.append(Paragraph(safe_text, styles["Heading3"]))
                 else:
-                    story.append(Paragraph(text, styles["Normal"]))
+                    story.append(Paragraph(safe_text, styles["Normal"]))
                 story.append(Spacer(1, 6))
+
+        # Also extract any tables in the DOCX
+        for table in doc.tables:
+            table_data = []
+            for row in table.rows:
+                row_data = []
+                for cell in row.cells:
+                    cell_text = html.escape(cell.text.strip()).replace("\n", "<br/>")
+                    row_data.append(Paragraph(cell_text, styles["Normal"]))
+                if any(row_data):
+                    table_data.append(row_data)
+            if table_data:
+                t = Table(table_data)
+                t.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ]))
+                story.append(t)
+                story.append(Spacer(1, 8))
 
         if not story:
             story.append(Paragraph("Empty DOCX document", styles["Normal"]))
