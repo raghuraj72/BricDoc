@@ -19,7 +19,7 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Production-grade all-in-one document productivity platform API.",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    openapi_url="/openapi.json",
     docs_url=f"{settings.API_V1_STR}/docs",
     redoc_url=f"{settings.API_V1_STR}/redoc"
 )
@@ -45,10 +45,25 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Mount API V1 routes
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+@app.get("/health")
+def root_health():
+    import shutil
+    total, used, free = shutil.disk_usage(settings.STORAGE_DIR)
+    return {
+        "status": "healthy",
+        "service": "BricDoc API",
+        "version": settings.VERSION,
+        "storage": {
+            "total_gb": round(total / (1024**3), 2),
+            "free_gb": round(free / (1024**3), 2)
+        }
+    }
+
 @app.get("/")
 def root():
     return {
         "message": "Welcome to BricDoc API — Everything your documents need. One intelligent workspace.",
         "docs": f"{settings.API_V1_STR}/docs",
-        "health": f"{settings.API_V1_STR}/admin/health"
+        "health": "/health"
     }
+

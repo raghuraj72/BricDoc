@@ -99,6 +99,126 @@ def list_documents(
 
     return query.order_by(Document.created_at.desc()).all()
 
+
+
+# ----------------- FOLDERS -----------------
+
+@router.post("/folders", response_model=FolderOut, status_code=status.HTTP_201_CREATED)
+def create_folder(
+    folder_in: FolderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new folder for document organization."""
+    folder = Folder(
+        owner_id=current_user.id,
+        name=folder_in.name.strip(),
+        parent_id=folder_in.parent_id,
+        color=folder_in.color or "#4f46e5"
+    )
+    db.add(folder)
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+@router.get("/folders", response_model=List[FolderOut])
+def list_folders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """List all folders owned by user."""
+    return db.query(Folder).filter(Folder.owner_id == current_user.id).all()
+
+# ----------------- SHARING -----------------
+
+@router.post("/share", response_model=ShareOut)
+def create_share_link(
+    share_in: ShareCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create a time-bounded public share link for a document."""
+    doc = db.query(Document).filter(
+        Document.id == share_in.document_id,
+        Document.owner_id == current_user.id
+    ).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    token = secrets.token_urlsafe(32)
+    expires_at = None
+    if share_in.expires_in_hours:
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=share_in.expires_in_hours)
+
+    share = DocumentShare(
+        document_id=doc.id,
+        share_token=token,
+        expires_at=expires_at,
+        allow_download=share_in.allow_download
+    )
+    db.add(share)
+    db.commit()
+
+    return ShareOut(
+        share_token=token,
+        share_url=f"/shared/{token}",
+        expires_at=expires_at,
+        allow_download=share_in.allow_download,
+        created_at=share.created_at
+    )
+
+@router.get("/shared/{token}")
+def get_shared_document(token: str, db: Session = Depends(get_db)):
+    """Access shared document metadata via share token."""
+    share = db.query(DocumentShare).filter(
+        DocumentShare.share_token == token,
+        DocumentShare.is_active == True
+    ).first()
+    if not share:
+        raise HTTPException(status_code=404, detail="Share link not found or inactive.")
+
+    if share.expires_at:
+        exp = share.expires_at.replace(tzinfo=timezone.utc) if share.expires_at.tzinfo is None else share.expires_at
+        if exp < datetime.now(timezone.utc):
+            raise HTTPException(status_code=410, detail="This share link has expired.")
+
+    share.view_count += 1
+    db.commit()
+
+    doc = share.document
+    return {
+        "filename": doc.filename,
+        "file_size_bytes": doc.file_size_bytes,
+        "page_count": doc.page_count,
+        "allow_download": share.allow_download,
+        "download_url": f"/api/v1/documents/shared/{token}/download" if share.allow_download else None
+    }
+
+@router.get("/shared/{token}/download")
+def download_shared_document(token: str, db: Session = Depends(get_db)):
+    """Download document via valid share token."""
+    share = db.query(DocumentShare).filter(
+        DocumentShare.share_token == token,
+        DocumentShare.is_active == True
+    ).first()
+    if not share or not share.allow_download:
+        raise HTTPException(status_code=404, detail="Download not permitted or share expired.")
+
+    if share.expires_at:
+        exp = share.expires_at.replace(tzinfo=timezone.utc) if share.expires_at.tzinfo is None else share.expires_at
+        if exp < datetime.now(timezone.utc):
+            raise HTTPException(status_code=410, detail="Share link expired.")
+
+    doc = share.document
+    abs_path = storage.get_absolute_path(doc.storage_path)
+    return FileResponse(
+        path=str(abs_path),
+        filename=doc.filename,
+        media_type=doc.mime_type
+    )
+
+# ----------------- DOCUMENT BY ID -----------------
+
 @router.get("/{document_id}", response_model=DocumentOut)
 def get_document(
     document_id: str,
@@ -241,114 +361,4 @@ def preview_document(
         content_disposition_type="inline"
     )
 
-# ----------------- FOLDERS -----------------
 
-@router.post("/folders", response_model=FolderOut, status_code=status.HTTP_201_CREATED)
-def create_folder(
-    folder_in: FolderCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Create a new folder for document organization."""
-    folder = Folder(
-        owner_id=current_user.id,
-        name=folder_in.name.strip(),
-        parent_id=folder_in.parent_id,
-        color=folder_in.color or "#4f46e5"
-    )
-    db.add(folder)
-    db.commit()
-    db.refresh(folder)
-    return folder
-
-@router.get("/folders", response_model=List[FolderOut])
-def list_folders(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """List all folders owned by user."""
-    return db.query(Folder).filter(Folder.owner_id == current_user.id).all()
-
-# ----------------- SHARING -----------------
-
-@router.post("/share", response_model=ShareOut)
-def create_share_link(
-    share_in: ShareCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Create a time-bounded public share link for a document."""
-    doc = db.query(Document).filter(
-        Document.id == share_in.document_id,
-        Document.owner_id == current_user.id
-    ).first()
-    if not doc:
-        raise HTTPException(status_code=404, detail="Document not found.")
-
-    token = secrets.token_urlsafe(32)
-    expires_at = None
-    if share_in.expires_in_hours:
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=share_in.expires_in_hours)
-
-    share = DocumentShare(
-        document_id=doc.id,
-        share_token=token,
-        expires_at=expires_at,
-        allow_download=share_in.allow_download
-    )
-    db.add(share)
-    db.commit()
-
-    return ShareOut(
-        share_token=token,
-        share_url=f"/shared/{token}",
-        expires_at=expires_at,
-        allow_download=share_in.allow_download,
-        created_at=share.created_at
-    )
-
-@router.get("/shared/{token}")
-def get_shared_document(token: str, db: Session = Depends(get_db)):
-    """Access shared document metadata via share token."""
-    share = db.query(DocumentShare).filter(
-        DocumentShare.share_token == token,
-        DocumentShare.is_active == True
-    ).first()
-    if not share:
-        raise HTTPException(status_code=404, detail="Share link not found or inactive.")
-
-    if share.expires_at and share.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=410, detail="This share link has expired.")
-
-    share.view_count += 1
-    db.commit()
-
-    doc = share.document
-    return {
-        "filename": doc.filename,
-        "file_size_bytes": doc.file_size_bytes,
-        "page_count": doc.page_count,
-        "allow_download": share.allow_download,
-        "download_url": f"/api/v1/documents/shared/{token}/download" if share.allow_download else None
-    }
-
-@router.get("/shared/{token}/download")
-def download_shared_document(token: str, db: Session = Depends(get_db)):
-    """Download document via valid share token."""
-    share = db.query(DocumentShare).filter(
-        DocumentShare.share_token == token,
-        DocumentShare.is_active == True
-    ).first()
-    if not share or not share.allow_download:
-        raise HTTPException(status_code=404, detail="Download not permitted or share expired.")
-
-    if share.expires_at and share.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=410, detail="Share link expired.")
-
-    doc = share.document
-    abs_path = storage.get_absolute_path(doc.storage_path)
-    return FileResponse(
-        path=str(abs_path),
-        filename=doc.filename,
-        media_type=doc.mime_type
-    )

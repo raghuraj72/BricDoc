@@ -51,42 +51,35 @@ BricDoc/
 - Node.js 18+ (tested with Node.js v24)
 - npm 10+ (tested with npm 11)
 
-### Backend Setup & Startup
-Open a PowerShell terminal:
+### Fast One-Command Startup
+To start both BricDoc frontend and backend on dedicated, collision-free ports:
 ```powershell
-# 1. Navigate to the project root
-cd "C:\Users\RAGHURAJ P SINGH\OneDrive\Desktop\BricDoc"
-
-# 2. Install backend dependencies
-python -m pip install -r backend/requirements.txt
-
-# 3. Set Python path and launch the FastAPI server
-$env:PYTHONPATH="backend"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+python start_services.py
 ```
-The backend API is now running at:
-- **API Root:** [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
-- **Interactive OpenAPI Documentation:** [http://127.0.0.1:8000/api/v1/docs](http://127.0.0.1:8000/api/v1/docs)
-- **Health Endpoint:** [http://127.0.0.1:8000/api/v1/admin/health](http://127.0.0.1:8000/api/v1/admin/health)
+This automatically verifies and launches:
+- **Web Platform:** [http://localhost:3005/](http://localhost:3005/)
+- **Interactive OpenAPI Documentation:** [http://127.0.0.1:8005/api/v1/docs](http://127.0.0.1:8005/api/v1/docs)
+- **Health Check Endpoint:** [http://127.0.0.1:8005/health](http://127.0.0.1:8005/health)
 
-### Frontend Setup & Startup
-In a second PowerShell terminal:
+*(Using dedicated ports 3005/8005 prevents any conflicts with other local desktop servers running on ports 3000/8000).*
+
+### Manual Startup (If Preferred)
+**Backend:**
 ```powershell
-cd "C:\Users\RAGHURAJ P SINGH\OneDrive\Desktop\BricDoc\frontend"
-
-# 1. Install dependencies (if not already installed)
-npm install
-
-# 2. Start the development server
-npm run dev
+python backend/run_backend.py
 ```
-Open your browser to:
-- **Web Platform:** [http://localhost:3000/](http://localhost:3000/)
+**Frontend:**
+```powershell
+cd frontend
+npm run start
+```
+Open your browser to: [http://localhost:3005/](http://localhost:3005/)
 
 ---
 
 ## 2. Running Automated Tests
 
+### Comprehensive Pytest Suite
 Execute the automated backend test suite covering PDF operations, conversions, AES encryption, redaction, and API authentication:
 ```powershell
 $env:PYTHONPATH="backend"
@@ -94,27 +87,17 @@ pytest backend/tests -v
 ```
 **Test Results:**
 ```
-backend/tests/test_api_endpoints.py::test_system_health PASSED           [  5%]
-backend/tests/test_api_endpoints.py::test_auth_registration_and_login PASSED [ 10%]
-backend/tests/test_api_endpoints.py::test_api_tool_merge PASSED          [ 15%]
-backend/tests/test_api_endpoints.py::test_api_tool_compress PASSED       [ 21%]
-backend/tests/test_api_endpoints.py::test_api_tool_watermark PASSED      [ 26%]
-backend/tests/test_conversions.py::test_images_to_pdf_and_back PASSED    [ 31%]
-backend/tests/test_conversions.py::test_text_to_pdf_and_back PASSED      [ 36%]
-backend/tests/test_conversions.py::test_pdf_to_markdown PASSED           [ 42%]
-backend/tests/test_conversions.py::test_create_zip_archive PASSED        [ 47%]
-backend/tests/test_pdf_operations.py::test_merge_pdfs PASSED             [ 52%]
-backend/tests/test_pdf_operations.py::test_split_pdf_by_range PASSED     [ 57%]
-backend/tests/test_pdf_operations.py::test_split_pdf_all_pages PASSED    [ 63%]
-backend/tests/test_pdf_operations.py::test_rotate_pages PASSED           [ 68%]
-backend/tests/test_pdf_operations.py::test_add_page_numbers PASSED       [ 73%]
-backend/tests/test_pdf_operations.py::test_compress_pdf PASSED           [ 78%]
-backend/tests/test_pdf_operations.py::test_crop_pages PASSED             [ 84%]
-backend/tests/test_security_operations.py::test_protect_and_unlock_pdf PASSED [ 89%]
-backend/tests/test_security_operations.py::test_watermark_pdf PASSED     [ 94%]
-backend/tests/test_security_operations.py::test_redact_pdf PASSED        [100%]
+======================= 20 passed in 52.65s =======================
+```
 
-======================= 19 passed in 2.57s =======================
+### Full Live System Verification (7 Domains)
+Run the live integration suite testing live HTTP responses across health, authentication, private vault, all core PDF engines, format conversions (including user's real `.docx`), AI document intelligence, and multi-step custom workflows:
+```powershell
+python backend/tests/test_live_system.py
+```
+**Output:**
+```
+>>> ALL 7 SYSTEM DOMAINS PASSED FULL LIVE VERIFICATION! <<<
 ```
 
 Verify the frontend production build:

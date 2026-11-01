@@ -48,7 +48,9 @@ This document tracks the actual, verified implementation and testing status of a
 ---
 
 ## Verification Summary
-- **Backend automated test suite:** 19/19 passing tests (`pytest backend/tests -v`).
+- **Backend automated test suite:** 20/20 passing tests (`pytest backend/tests -v`) in 52.6s.
+- **Full live 7-domain verification suite:** 7/7 domains passing with live HTTP assertions across health, authentication, private vault, all core PDF engines, format conversions (including user's real `.docx`), AI document intelligence, and multi-step custom workflows (`python backend/tests/test_live_system.py`).
 - **Frontend production build:** Clean compilation with 21/21 static and dynamic pages generated (`npm run build`).
+- **Dedicated Collision-Free Ports:** Running reliably on `http://localhost:3005` (Frontend) and `http://127.0.0.1:8005` (Backend), completely isolated from any other projects or port 3000/8000 conflicts.
 - **Database schema:** Full relational persistence verified with SQLite local fallback and PostgreSQL production support.
 - **Security:** Strict user ownership checks, non-guessable UUID file paths, path traversal defense, and zero mock API responses.
