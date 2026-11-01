@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bricdoc-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://bricdoc_admin:bricdoc_secret_pass@db:5432/bricdoc
+      - SECRET_KEY=bricdoc-docker-compose-production-jwt-secret-key-2026
+      - STORAGE_DIR=/app/vault_storage
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - vault_data:/app/vault_storage
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: bricdoc-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+
+  db:
+    image: postgres:16-alpine
+    container_name: bricdoc-postgres
+    restart: always
+    environment:
+      - POSTGRES_USER=bricdoc_admin
+      - POSTGRES_PASSWORD=bricdoc_secret_pass
+      - POSTGRES_DB=bricdoc
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: bricdoc-redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+volumes:
+  vault_data:
+  postgres_data:
