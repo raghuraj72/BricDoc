@@ -8,7 +8,7 @@ from PIL import Image
 
 API_URL = "http://127.0.0.1:8005/api/v1"
 HEALTH_URL = "http://127.0.0.1:8005/health"
-FRONTEND_URL = "http://localhost:3005"
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://bricdoc-raghuraj.vercel.app")
 
 def create_sample_pdf(text="Hello BricDoc Test PDF"):
     writer = PdfWriter()
