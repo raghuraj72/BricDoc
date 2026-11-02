@@ -73,6 +73,111 @@ async def render_editor_page(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to render page: {str(e)}")
 
+@router.post("/text-blocks")
+async def get_editor_text_blocks(
+    file: UploadFile = File(...),
+    page: int = Form(1)
+):
+    """
+    Extract all selectable and editable text blocks on a page.
+    """
+    try:
+        pdf_bytes = await file.read()
+        blocks = PDFEditorService.get_page_text_blocks(pdf_bytes, page_num=page)
+        return {"page": page, "blocks": blocks}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to extract text blocks: {str(e)}")
+
+@router.post("/replace-text")
+async def replace_editor_text(
+    file: UploadFile = File(...),
+    find_text: str = Form(...),
+    replace_text: str = Form(...),
+    page: Optional[int] = Form(None),
+    font_size: Optional[float] = Form(None),
+    color: Optional[str] = Form("#000000"),
+    match_case: bool = Form(False)
+):
+    """
+    Find and replace text occurrences cleanly across a single page or entire document.
+    """
+    try:
+        pdf_bytes = await file.read()
+        out_bytes = PDFEditorService.replace_text(
+            pdf_bytes=pdf_bytes,
+            find_text=find_text,
+            replace_text=replace_text,
+            page_num=page if page and page > 0 else None,
+            font_size=font_size,
+            color=color,
+            match_case=match_case
+        )
+        filename = file.filename or "replaced.pdf"
+        return Response(
+            content=out_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="replaced_{filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to replace text: {str(e)}")
+
+@router.post("/delete-text")
+async def delete_editor_text(
+    file: UploadFile = File(...),
+    text_to_delete: str = Form(...),
+    page: Optional[int] = Form(None)
+):
+    """
+    Permanently erase and redact specific text occurrences.
+    """
+    try:
+        pdf_bytes = await file.read()
+        out_bytes = PDFEditorService.delete_text(
+            pdf_bytes=pdf_bytes,
+            text_to_delete=text_to_delete,
+            page_num=page if page and page > 0 else None
+        )
+        filename = file.filename or "deleted.pdf"
+        return Response(
+            content=out_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="modified_{filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to delete text: {str(e)}")
+
+@router.post("/replace-block")
+async def replace_editor_block(
+    file: UploadFile = File(...),
+    page: int = Form(...),
+    bbox_json: str = Form(...),
+    new_text: str = Form(...),
+    font_size: Optional[float] = Form(None),
+    color: Optional[str] = Form("#000000")
+):
+    """
+    Replace a specific text block at bbox coordinates [x0, y0, x1, y1] on a page.
+    """
+    try:
+        pdf_bytes = await file.read()
+        bbox = json.loads(bbox_json)
+        out_bytes = PDFEditorService.replace_block(
+            pdf_bytes=pdf_bytes,
+            page_num=page,
+            bbox=bbox,
+            new_text=new_text,
+            font_size=font_size,
+            color=color
+        )
+        filename = file.filename or "updated.pdf"
+        return Response(
+            content=out_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="updated_{filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to replace block: {str(e)}")
+
 @router.post("/save-edits")
 async def save_editor_changes(
     file: Optional[UploadFile] = File(None),

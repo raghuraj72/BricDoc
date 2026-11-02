@@ -242,6 +242,34 @@ class ApiClient {
       { method: "POST", body: formData }
     );
   }
+
+  async getEditorTextBlocks(formData: FormData) {
+    return this.request<{ page: number; blocks: { bbox: [number, number, number, number]; text: string; block_id: number }[] }>(
+      "/editor/text-blocks",
+      { method: "POST", body: formData }
+    );
+  }
+
+  async replaceEditorText(formData: FormData): Promise<Blob> {
+    return this.request<Blob>("/editor/replace-text", {
+      method: "POST",
+      body: formData,
+    });
+  }
+
+  async deleteEditorText(formData: FormData): Promise<Blob> {
+    return this.request<Blob>("/editor/delete-text", {
+      method: "POST",
+      body: formData,
+    });
+  }
+
+  async replaceEditorBlock(formData: FormData): Promise<Blob> {
+    return this.request<Blob>("/editor/replace-block", {
+      method: "POST",
+      body: formData,
+    });
+  }
 }
 
 export const api = new ApiClient();
