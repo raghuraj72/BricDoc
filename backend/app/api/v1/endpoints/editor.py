@@ -1,4 +1,5 @@
 import json
+import base64
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response, status
 from sqlalchemy.orm import Session
@@ -11,6 +12,66 @@ from app.models.document import Document
 from app.services.pdf_editor import PDFEditorService
 
 router = APIRouter()
+
+@router.post("/info")
+async def get_editor_pdf_info(
+    file: Optional[UploadFile] = File(None),
+    document_id: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """
+    Inspect PDF metadata, page count, and dimensions for the interactive editor.
+    """
+    if file:
+        pdf_bytes = await file.read()
+    elif document_id:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required.")
+        doc = db.query(Document).filter(Document.id == document_id, Document.owner_id == current_user.id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        abs_path = storage.get_absolute_path(doc.storage_path)
+        with open(abs_path, "rb") as f:
+            pdf_bytes = f.read()
+    else:
+        raise HTTPException(status_code=400, detail="Either file upload or document_id is required.")
+
+    try:
+        return PDFEditorService.get_info(pdf_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to inspect PDF: {str(e)}")
+
+@router.post("/render-page")
+async def render_editor_page(
+    file: Optional[UploadFile] = File(None),
+    document_id: Optional[str] = Form(None),
+    page: int = Form(1),
+    dpi: int = Form(150),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    """
+    Render a specific page of a PDF as base64 PNG data URL with dimensions and page count.
+    """
+    if file:
+        pdf_bytes = await file.read()
+    elif document_id:
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required.")
+        doc = db.query(Document).filter(Document.id == document_id, Document.owner_id == current_user.id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found.")
+        abs_path = storage.get_absolute_path(doc.storage_path)
+        with open(abs_path, "rb") as f:
+            pdf_bytes = f.read()
+    else:
+        raise HTTPException(status_code=400, detail="Either file upload or document_id is required.")
+
+    try:
+        return PDFEditorService.render_page(pdf_bytes, page_num=page, dpi=dpi)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to render page: {str(e)}")
 
 @router.post("/save-edits")
 async def save_editor_changes(
