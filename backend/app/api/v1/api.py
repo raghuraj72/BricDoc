@@ -1,4 +1,7 @@
 from fastapi import APIRouter
+import shutil
+from datetime import datetime, timezone
+from app.core.config import settings
 from app.api.v1.endpoints import (
     auth,
     documents,
@@ -11,6 +14,21 @@ from app.api.v1.endpoints import (
 )
 
 api_router = APIRouter()
+
+@api_router.get("/health")
+def api_v1_health():
+    """Public API v1 health check endpoint reporting live system status."""
+    total, used, free = shutil.disk_usage(settings.STORAGE_DIR)
+    return {
+        "status": "healthy",
+        "service": "BricDoc API",
+        "version": settings.VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "storage": {
+            "total_gb": round(total / (1024**3), 2),
+            "free_gb": round(free / (1024**3), 2)
+        }
+    }
 
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(documents.router, prefix="/documents", tags=["Documents & Vault"])

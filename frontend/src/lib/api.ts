@@ -57,12 +57,30 @@ class ApiClient {
         headers,
       });
     } catch (fetchErr: any) {
-      if (fetchErr.name === "TypeError" || fetchErr.message?.includes("fetch")) {
-        throw new Error(
-          `Cannot reach BricDoc backend engine (${url}). Please ensure the backend service is running and accessible.`
-        );
+      // If direct request failed and we were calling an absolute URL, attempt same-origin Next.js proxy fallback
+      if (typeof window !== "undefined" && (url.startsWith("http://") || url.startsWith("https://"))) {
+        try {
+          const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+          const proxySubPath = cleanEndpoint.startsWith("/api/v1/")
+            ? cleanEndpoint
+            : `/api/v1${cleanEndpoint}`;
+          response = await fetch(proxySubPath, {
+            ...options,
+            headers,
+          });
+        } catch {
+          throw new Error(
+            `Cannot reach BricDoc backend engine (${url}). Please ensure the backend service is running and accessible.`
+          );
+        }
+      } else {
+        if (fetchErr.name === "TypeError" || fetchErr.message?.includes("fetch")) {
+          throw new Error(
+            `Cannot reach BricDoc backend engine (${url}). Please ensure the backend service is running and accessible.`
+          );
+        }
+        throw fetchErr;
       }
-      throw fetchErr;
     }
 
     if (!response.ok) {
