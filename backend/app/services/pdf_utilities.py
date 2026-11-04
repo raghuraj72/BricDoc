@@ -47,12 +47,14 @@ class PDFUtilities:
                 "diff_summary": diff[:20]  # First 20 lines of diff
             })
 
+        len1 = len(doc1)
+        len2 = len(doc2)
         doc1.close()
         doc2.close()
 
         return {
-            "total_pages_doc1": len(doc1),
-            "total_pages_doc2": len(doc2),
+            "total_pages_doc1": len1,
+            "total_pages_doc2": len2,
             "total_additions": total_additions,
             "total_deletions": total_deletions,
             "pages": page_comparisons

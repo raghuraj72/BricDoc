@@ -167,9 +167,9 @@ class ApiClient {
     });
   }
 
-  // Generic Tool Runner (multipart upload returning Blob)
-  async executeTool(endpoint: string, formData: FormData): Promise<Blob> {
-    return this.request<Blob>(endpoint, {
+  // Generic Tool Runner (multipart upload returning Blob or JSON)
+  async executeTool<T = Blob>(endpoint: string, formData: FormData): Promise<T> {
+    return this.request<T>(endpoint, {
       method: "POST",
       body: formData,
     });

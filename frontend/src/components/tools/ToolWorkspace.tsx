@@ -34,6 +34,7 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
   const [resultBlob, setResultBlob] = useState<Blob | null>(null);
   const [downloadFilename, setDownloadFilename] = useState<string>("");
   const [resultMeta, setResultMeta] = useState<{ origSize?: number; newSize?: number; reduction?: string } | null>(null);
+  const [jsonReport, setJsonReport] = useState<any>(null);
 
   // Common tool settings
   const [options, setOptions] = useState<Record<string, any>>({
@@ -96,17 +97,42 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
       return;
     }
 
+    if (tool.id === "protect" && !options.password?.trim()) {
+      setError("Please enter a password to protect your document.");
+      return;
+    }
+
+    if (tool.id === "unlock" && !options.password?.trim()) {
+      setError("Please enter the document password to unlock it.");
+      return;
+    }
+
+    if (tool.id === "watermark" && !options.text?.trim()) {
+      setError("Please enter watermark text.");
+      return;
+    }
+
+    if (tool.id === "compare" && files.length < 2) {
+      setError("Please select at least 2 PDF documents to compare.");
+      return;
+    }
+
     setIsProcessing(true);
     setError(null);
 
     try {
       const formData = new FormData();
 
-      // If tool takes multiple files (like merge or images-to-pdf)
-      if (tool.acceptsMultiple) {
+      if (tool.id === "compare") {
+        formData.append("file1", files[0]);
+        formData.append("file2", files[1] || files[0]);
         files.forEach((f) => formData.append("files", f));
+      } else if (tool.acceptsMultiple) {
+        files.forEach((f) => formData.append("files", f));
+        if (files[0]) formData.append("file", files[0]);
       } else {
         formData.append("file", files[0]);
+        formData.append("files", files[0]);
       }
 
       // Append tool-specific options
@@ -116,8 +142,18 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
         }
       });
 
-      const blob = await api.executeTool(tool.apiEndpoint, formData);
-      setResultBlob(blob);
+      const responseData = await api.executeTool<any>(tool.apiEndpoint, formData);
+
+      let processedBlob: Blob;
+      if (responseData instanceof Blob) {
+        processedBlob = responseData;
+        setJsonReport(null);
+      } else {
+        const jsonStr = JSON.stringify(responseData, null, 2);
+        processedBlob = new Blob([jsonStr], { type: "application/json" });
+        setJsonReport(responseData);
+      }
+      setResultBlob(processedBlob);
 
       // Determine clean filename
       const baseName = files[0].name.replace(/\.[^/.]+$/, "");
@@ -127,13 +163,14 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
       if (tool.id === "pdf-to-markdown") outExt = "md";
       if (tool.id === "split" && !options.ranges) outExt = "zip";
       if (tool.id === "pdf-to-images") outExt = "zip";
+      if (tool.id === "compare" || tool.id === "inspect-ocr") outExt = "json";
 
       const outName = `${tool.id}_${baseName}.${outExt}`;
       setDownloadFilename(outName);
 
-      if (tool.id === "compress") {
+      if (tool.id === "compress" && processedBlob.size) {
         const orig = files[0].size;
-        const comp = blob.size;
+        const comp = processedBlob.size;
         const red = (((orig - comp) / orig) * 100).toFixed(1);
         setResultMeta({ origSize: orig, newSize: comp, reduction: red });
       }
@@ -159,6 +196,7 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
   const resetAll = () => {
     setFiles([]);
     setResultBlob(null);
+    setJsonReport(null);
     setError(null);
     setResultMeta(null);
   };
@@ -465,7 +503,7 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
 
             <div>
               <h3 className="text-2xl font-bold text-slate-900 dark:text-white">
-                Your document is ready!
+                {jsonReport ? "Analysis Report Complete" : "Your document is ready!"}
               </h3>
               <p className="mt-1 text-sm text-slate-500">
                 {downloadFilename} • {formatBytes(resultBlob.size)}
@@ -476,6 +514,19 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
                   <span>→</span>
                   <span>New: {formatBytes(resultMeta.newSize || 0)}</span>
                   <span>({resultMeta.reduction}% saved)</span>
+                </div>
+              )}
+
+              {/* JSON Analysis Report Details */}
+              {jsonReport && (
+                <div className="mt-6 max-w-lg mx-auto text-left p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+                  <div className="font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-1.5 flex items-center justify-between">
+                    <span>Diagnostic Details</span>
+                    <span className="font-mono text-brand-600">JSON Report</span>
+                  </div>
+                  <pre className="overflow-x-auto p-2 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-800 font-mono text-[11px] max-h-48">
+                    {JSON.stringify(jsonReport, null, 2)}
+                  </pre>
                 </div>
               )}
             </div>

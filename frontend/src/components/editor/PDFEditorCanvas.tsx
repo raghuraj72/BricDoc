@@ -52,7 +52,7 @@ interface TextBlock {
 
 export function PDFEditorCanvas() {
   const [file, setFile] = useState<File | null>(null);
-  const [activeTool, setActiveTool] = useState<"text" | "freehand" | "highlight" | "rect" | "whiteout" | "edit-blocks">("text");
+  const [activeTool, setActiveTool] = useState<"select" | "text" | "freehand" | "highlight" | "rect" | "whiteout" | "edit-blocks">("select");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [zoom, setZoom] = useState<number>(1.0);
@@ -61,6 +61,8 @@ export function PDFEditorCanvas() {
   // Annotations
   const [edits, setEdits] = useState<EditItem[]>([]);
   const [selectedEditId, setSelectedEditId] = useState<string | null>(null);
+  const [isDraggingAnnotation, setIsDraggingAnnotation] = useState(false);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Active inline text creation
   const [inlineTextInput, setInlineTextInput] = useState<{
@@ -420,6 +422,28 @@ export function PDFEditorCanvas() {
     redrawOverlay();
   }, [redrawOverlay]);
 
+  // Keyboard shortcut listener for deleting selected annotation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedEditId) {
+        e.preventDefault();
+        setEdits((prev) => prev.filter((item) => item.id !== selectedEditId));
+        setSelectedEditId(null);
+      }
+      if (e.key === "Escape") {
+        setSelectedEditId(null);
+        setInlineTextInput(null);
+        setEditingBlock(null);
+        setActiveTool("select");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedEditId]);
+
   // Convert mouse event coordinates to unscaled PDF points
   const getPDFCoordinates = (e: React.MouseEvent<HTMLCanvasElement>): { x: number; y: number } => {
     const overlay = overlayCanvasRef.current;
@@ -450,7 +474,7 @@ export function PDFEditorCanvas() {
       }
     }
 
-    // Check if clicked an existing annotation to select it
+    // Check if clicked an existing annotation to select and drag it
     const pageEdits = edits.filter((item) => item.page === currentPage);
     const hitEdit = [...pageEdits].reverse().find((item) => {
       if (item.type === "text" && item.text) {
@@ -476,11 +500,18 @@ export function PDFEditorCanvas() {
 
     if (hitEdit) {
       setSelectedEditId(hitEdit.id);
+      setIsDraggingAnnotation(true);
+      setDragOffset({ x: coords.x - hitEdit.x, y: coords.y - hitEdit.y });
       return;
     }
 
     // Deselect if clicked empty space
     setSelectedEditId(null);
+
+    // If activeTool is select, do not initiate any drawing or text creation
+    if (activeTool === "select") {
+      return;
+    }
 
     // If Text tool active, open inline text input at click location
     if (activeTool === "text") {
@@ -510,6 +541,19 @@ export function PDFEditorCanvas() {
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // If dragging an existing annotation
+    if (isDraggingAnnotation && selectedEditId) {
+      const coords = getPDFCoordinates(e);
+      setEdits((prev) =>
+        prev.map((item) =>
+          item.id === selectedEditId
+            ? { ...item, x: Math.max(0, coords.x - dragOffset.x), y: Math.max(0, coords.y - dragOffset.y) }
+            : item
+        )
+      );
+      return;
+    }
+
     if (!isDrawing) return;
     const coords = getPDFCoordinates(e);
     setDragCurrent(coords);
@@ -520,6 +564,11 @@ export function PDFEditorCanvas() {
   };
 
   const handleMouseUp = () => {
+    if (isDraggingAnnotation) {
+      setIsDraggingAnnotation(false);
+      return;
+    }
+
     if (!isDrawing) return;
 
     if (activeTool === "freehand" && currentLine.length > 1) {
@@ -585,6 +634,7 @@ export function PDFEditorCanvas() {
     setEdits((prev) => [...prev, newEdit]);
     setSelectedEditId(newEdit.id);
     setInlineTextInput(null);
+    setActiveTool("select"); // Switch back to select tool to prevent accidental clicks dropping notes
   };
 
   // Delete selected annotation
@@ -689,6 +739,43 @@ export function PDFEditorCanvas() {
       });
     } catch (err: any) {
       setStatusMessage({ type: "error", text: err.message || "Failed to delete text." });
+    } finally {
+      setIsDeletingText(false);
+    }
+  };
+
+  // Quick cleaner to erase unwanted "BricDoc Note" text stamps
+  const handleQuickCleanBricDocNotes = async () => {
+    if (!file) return;
+    setIsDeletingText(true);
+    setStatusMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("text_to_delete", "BricDoc Note");
+
+      const modifiedBlob = await api.deleteEditorText(formData);
+      const updatedFile = new File([modifiedBlob], file.name, { type: "application/pdf" });
+      setFile(updatedFile);
+
+      const pdfjs = await loadPdfJs();
+      const arrayBuffer = await updatedFile.arrayBuffer();
+      const doc = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+      pdfDocRef.current = doc;
+
+      await renderCurrentPage();
+
+      // Clear any unsaved notes with BricDoc Note
+      setEdits((prev) => prev.filter((e) => !e.text?.includes("BricDoc Note")));
+      setSelectedEditId(null);
+
+      setStatusMessage({
+        type: "success",
+        text: 'Successfully erased all "BricDoc Note" stamps from the document.',
+      });
+    } catch (err: any) {
+      setStatusMessage({ type: "error", text: err.message || "Failed to remove notes." });
     } finally {
       setIsDeletingText(false);
     }
@@ -823,10 +910,49 @@ export function PDFEditorCanvas() {
             </div>
           )}
 
+          {/* Default Notes Cleanup Alert Banner */}
+          {edits.some((e) => e.text?.includes("BricDoc Note")) && (
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-2xl p-3 px-4 flex items-center justify-between gap-3 text-xs shadow-sm">
+              <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span className="font-medium">
+                  Detected {edits.filter((e) => e.text?.includes("BricDoc Note")).length} default &quot;BricDoc Note&quot; annotations on this document.
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setEdits((prev) => prev.filter((e) => !e.text?.includes("BricDoc Note")));
+                    setSelectedEditId(null);
+                  }}
+                  className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold shadow-sm transition-all"
+                >
+                  Clear All Default Notes
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Primary Operations Toolbar */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-3 shadow-soft-md flex flex-wrap items-center justify-between gap-3">
             {/* Main Tools Group */}
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <button
+                onClick={() => {
+                  setActiveTool("select");
+                  setDetectBlocks(false);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  activeTool === "select" && !detectBlocks
+                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
+                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+                title="Select, move, or delete existing annotations"
+              >
+                <Move className="w-4 h-4" />
+                <span>Select & Move</span>
+              </button>
+
               <button
                 onClick={() => {
                   setActiveTool("text");
@@ -1087,6 +1213,16 @@ export function PDFEditorCanvas() {
 
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
+                  disabled={isDeletingText}
+                  onClick={handleQuickCleanBricDocNotes}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs text-rose-700 dark:text-rose-200 bg-rose-100 hover:bg-rose-200 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 transition-all shadow-sm"
+                  title="Remove all occurrences of 'BricDoc Note' baked into the document"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Erase all &quot;BricDoc Note&quot;s</span>
+                </button>
+                <button
                   disabled={isDeletingText || !deleteTextVal.trim()}
                   onClick={handleExecuteDeleteText}
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl font-bold text-xs text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 shadow-sm transition-all"
@@ -1107,6 +1243,14 @@ export function PDFEditorCanvas() {
           {/* Secondary Formatting Bar for Active Tool */}
           <div className="flex flex-wrap items-center justify-between text-xs bg-slate-50 dark:bg-slate-800/50 p-2.5 px-4 rounded-xl border border-slate-200/80 dark:border-slate-800 gap-3">
             <div className="flex items-center gap-3">
+              {activeTool === "select" && !detectBlocks && (
+                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                  <Move className="w-4 h-4 text-brand-600" />
+                  <span>
+                    Select Mode: Click any text note or shape to select, drag to reposition, or press Delete/Backspace to remove.
+                  </span>
+                </div>
+              )}
               {activeTool === "text" && (
                 <div className="flex items-center gap-3">
                   <span className="text-slate-500 font-semibold">New Text Settings:</span>
@@ -1231,7 +1375,15 @@ export function PDFEditorCanvas() {
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                className="absolute inset-0 cursor-crosshair select-none touch-none"
+                className={`absolute inset-0 select-none touch-none ${
+                  activeTool === "select"
+                    ? isDraggingAnnotation
+                      ? "cursor-grabbing"
+                      : "cursor-default"
+                    : activeTool === "text"
+                    ? "cursor-text"
+                    : "cursor-crosshair"
+                }`}
               />
 
               {/* Active Inline Text Input Popup */}

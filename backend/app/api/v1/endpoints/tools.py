@@ -360,13 +360,18 @@ async def redact_pdf(
 
 @router.post("/compare")
 async def compare_documents(
-    file1: UploadFile = File(...),
-    file2: UploadFile = File(...),
+    file1: Optional[UploadFile] = File(None),
+    file2: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db)
 ):
     """Compare two PDFs and return detailed textual difference analysis."""
-    bytes1 = await file1.read()
-    bytes2 = await file2.read()
+    f1 = file1 or (files[0] if files and len(files) > 0 else None)
+    f2 = file2 or (files[1] if files and len(files) > 1 else f1)
+    if not f1 or not f2:
+        raise HTTPException(status_code=400, detail="Two PDF files are required for comparison.")
+    bytes1 = await f1.read()
+    bytes2 = await f2.read()
     try:
         diff_result = PDFUtilities.compare_pdfs(bytes1, bytes2)
         return diff_result
