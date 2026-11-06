@@ -56,6 +56,27 @@ class ApiClient {
         ...options,
         headers,
       });
+
+      // If the direct external URL returned 502/503/504 (e.g. dead tunnel), attempt same-origin proxy fallback
+      if (!response.ok && (response.status === 502 || response.status === 503 || response.status === 504)) {
+        if (typeof window !== "undefined" && (url.startsWith("http://") || url.startsWith("https://"))) {
+          try {
+            const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+            const proxySubPath = cleanEndpoint.startsWith("/api/v1/")
+              ? cleanEndpoint
+              : `/api/v1${cleanEndpoint}`;
+            const proxyResponse = await fetch(proxySubPath, {
+              ...options,
+              headers,
+            });
+            if (proxyResponse.ok) {
+              response = proxyResponse;
+            }
+          } catch {
+            // Keep original response for error formatting
+          }
+        }
+      }
     } catch (fetchErr: any) {
       // If direct request failed and we were calling an absolute URL, attempt same-origin Next.js proxy fallback
       if (typeof window !== "undefined" && (url.startsWith("http://") || url.startsWith("https://"))) {
@@ -86,32 +107,56 @@ class ApiClient {
     if (!response.ok) {
       let errorMessage = `Request failed (${response.status})`;
       try {
-        const errorJson = await response.json();
-        if (errorJson.detail) {
-          errorMessage = typeof errorJson.detail === "string" 
-            ? errorJson.detail 
-            : JSON.stringify(errorJson.detail);
+        const rawText = await response.text();
+        if (rawText) {
+          try {
+            const errorJson = JSON.parse(rawText);
+            if (errorJson.detail) {
+              errorMessage = typeof errorJson.detail === "string" 
+                ? errorJson.detail 
+                : JSON.stringify(errorJson.detail);
+            } else if (errorJson.message) {
+              errorMessage = errorJson.message;
+            } else {
+              errorMessage = rawText;
+            }
+          } catch {
+            // rawText is not JSON (e.g. HTML 502/504 gateway error from proxy or tunnel)
+            if (response.status === 502 || response.status === 504 || response.status === 503) {
+              errorMessage = `BricDoc backend engine is currently offline or unreachable (${response.status} Gateway Error). Please ensure the backend service is running.`;
+            } else if (rawText.length < 300 && !rawText.includes("<!DOCTYPE")) {
+              errorMessage = rawText;
+            } else {
+              errorMessage = `Server returned status ${response.status}.`;
+            }
+          }
         }
       } catch {
-        // Fallback to text
-        const text = await response.text();
-        if (text) errorMessage = text;
+        // Stream could not be read
       }
       throw new Error(errorMessage);
     }
 
-    // If response is a downloadable binary (PDF, ZIP, DOCX, etc.)
+    // If response is a downloadable binary (PDF, ZIP, DOCX, Excel, Images, etc.)
     const contentType = response.headers.get("content-type") || "";
     if (
       contentType.includes("application/pdf") ||
       contentType.includes("application/zip") ||
       contentType.includes("application/octet-stream") ||
-      contentType.includes("application/vnd.openxmlformats")
+      contentType.includes("application/vnd.openxmlformats") ||
+      contentType.includes("image/")
     ) {
       return (await response.blob()) as unknown as T;
     }
 
-    return (await response.json()) as T;
+    // Safely read response text once to avoid "body stream already read"
+    const bodyText = await response.text();
+    try {
+      return JSON.parse(bodyText) as T;
+    } catch {
+      // Fallback for plain text, markdown, or binary-like text streams
+      return new Blob([bodyText], { type: contentType || "text/plain" }) as unknown as T;
+    }
   }
 
   // Auth
