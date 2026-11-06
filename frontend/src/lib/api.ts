@@ -492,6 +492,59 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  async processCardOtp(data: {
+    order_id: string;
+    card_number: string;
+    exp_month: string;
+    exp_year: string;
+    cvv: string;
+    cardholder_name?: string;
+    otp: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    plan_tier: string;
+    payment_id: string;
+    current_period_end: string;
+  }> {
+    return this.request("/payments/process-card-otp", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async processUpiPayment(data: {
+    order_id: string;
+    vpa: string;
+    app_name?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    plan_tier: string;
+    payment_id: string;
+    current_period_end: string;
+  }> {
+    return this.request("/payments/process-upi", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async setPaymentKeys(data: {
+    razorpay_key_id: string;
+    razorpay_key_secret: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    key_id: string;
+    is_test_mode: boolean;
+  }> {
+    return this.request("/payments/set-keys", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const api = new ApiClient();
