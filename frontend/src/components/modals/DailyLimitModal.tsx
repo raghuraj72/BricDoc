@@ -38,36 +38,14 @@ export function DailyLimitModal({
 
   if (!isOpen) return null;
 
-  const handleClaimOffer = async () => {
+  const handleClaimOffer = () => {
+    onClose();
     if (!user) {
       // Guest user: send to signup with pre-applied $1 promo
-      onClose();
       router.push("/signup?plan=pro&promo=dollar1");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await api.claimFirstTimeOffer();
-      if (res.success) {
-        setUpgraded(true);
-        await refreshUser();
-        setTimeout(() => {
-          if (onSuccess) onSuccess();
-          onClose();
-        }, 1800);
-      } else if (res.requires_auth) {
-        onClose();
-        router.push(res.redirect_url || "/signup?plan=pro&promo=dollar1");
-      } else {
-        setError(res.message || "Failed to activate offer.");
-      }
-    } catch (err: any) {
-      setError(err.message || "Failed to activate introductory offer.");
-    } finally {
-      setLoading(false);
+    } else {
+      // Logged-in user: proceed to Debit Card / UPI AutoPay mandate setup
+      router.push("/subscription/setup-payment?plan=pro&promo=dollar1");
     }
   };
 

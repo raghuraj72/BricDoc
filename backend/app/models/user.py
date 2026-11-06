@@ -30,6 +30,7 @@ class User(Base):
     ai_conversations = relationship("AIConversation", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
+    payment_methods = relationship("PaymentMethod", back_populates="user", cascade="all, delete-orphan")
 
 
 class Profile(Base):
@@ -61,10 +62,34 @@ class Subscription(Base):
     ai_credits_monthly = Column(Integer, default=50)
     ai_credits_used = Column(Integer, default=0)
     first_time_offer_used = Column(Boolean, default=False)
+    auto_renew_enabled = Column(Boolean, default=True)
+    payment_method_id = Column(String(36), nullable=True)
     current_period_end = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="subscription")
+
+
+class PaymentMethod(Base):
+    __tablename__ = "payment_methods"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    payment_type = Column(String(32), nullable=False)  # "card" or "upi"
+    card_brand = Column(String(32), nullable=True)     # "visa", "mastercard", "rupay", "amex"
+    card_last4 = Column(String(4), nullable=True)      # "4242"
+    card_exp_month = Column(String(2), nullable=True)  # "12"
+    card_exp_year = Column(String(4), nullable=True)   # "2028"
+    cardholder_name = Column(String(128), nullable=True)
+    upi_vpa = Column(String(128), nullable=True)       # "alex@okhdfcbank"
+    mandate_status = Column(String(32), default="active")  # "active", "cancelled", "paused"
+    mandate_frequency = Column(String(32), default="monthly")
+    mandate_amount = Column(Integer, default=12)       # $12/month
+    auto_renew_enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User", back_populates="payment_methods")
 
 
 class DailyUsage(Base):

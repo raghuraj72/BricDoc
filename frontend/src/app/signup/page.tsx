@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -14,12 +14,22 @@ function SignUpForm() {
   const promoParam = searchParams.get("promo");
   const isPromo = planParam === "pro" || promoParam === "dollar1";
 
-  const { register } = useAuth();
+  const { user, register } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      if (isPromo) {
+        router.push("/subscription/setup-payment?plan=pro&promo=dollar1");
+      } else {
+        router.push("/dashboard");
+      }
+    }
+  }, [user, isPromo, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +48,11 @@ function SignUpForm() {
         plan: isPromo ? "pro" : "free",
         promo_code: isPromo ? "dollar1" : undefined,
       });
-      router.push("/dashboard");
+      if (isPromo) {
+        router.push("/subscription/setup-payment?plan=pro&promo=dollar1");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: any) {
       setError(err.message || "Failed to create account.");
     } finally {

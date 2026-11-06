@@ -8,10 +8,11 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   async rewrites() {
-    const backendUrl =
+    const rawBackendUrl =
       process.env.BACKEND_INTERNAL_URL ||
-      process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/v1\/?$/, '') ||
+      process.env.NEXT_PUBLIC_API_URL ||
       'http://127.0.0.1:8005';
+    const backendUrl = rawBackendUrl.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '');
     return [
       {
         source: '/api/v1/:path*',

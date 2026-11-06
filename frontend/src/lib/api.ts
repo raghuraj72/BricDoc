@@ -1,4 +1,16 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8005/api/v1";
+export function getApiBase(): string {
+  // In the browser, always use same-origin relative `/api/v1`.
+  // Next.js rewrites in next.config.mjs proxy all `/api/v1/*` requests directly
+  // to BACKEND_INTERNAL_URL. This completely eliminates CORS errors and Cloudflare 530/502 errors!
+  if (typeof window !== "undefined") {
+    return "/api/v1";
+  }
+  const envUrl = process.env.BACKEND_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8005";
+  const clean = envUrl.replace(/\/+$/, "");
+  return clean.endsWith("/api/v1") ? clean : `${clean}/api/v1`;
+}
+
+export const API_BASE = getApiBase();
 
 class ApiClient {
   private getToken(): string | null {
@@ -28,12 +40,11 @@ class ApiClient {
       url = endpoint;
     } else {
       const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-      if (cleanEndpoint.startsWith("/api/v1/")) {
-        const subPath = cleanEndpoint.replace(/^\/api\/v1/, "");
-        url = `${API_BASE}${subPath}`;
-      } else {
-        url = `${API_BASE}${cleanEndpoint}`;
-      }
+      const subPath = cleanEndpoint.startsWith("/api/v1/")
+        ? cleanEndpoint.replace(/^\/api\/v1/, "")
+        : cleanEndpoint;
+      const base = getApiBase();
+      url = `${base}${subPath}`;
     }
 
     const headers: Record<string, string> = {
@@ -122,8 +133,8 @@ class ApiClient {
             }
           } catch {
             // rawText is not JSON (e.g. HTML 502/504 gateway error from proxy or tunnel)
-            if (response.status === 502 || response.status === 504 || response.status === 503) {
-              errorMessage = `BricDoc backend engine is currently offline or unreachable (${response.status} Gateway Error). Please ensure the backend service is running.`;
+            if (response.status === 530 || response.status === 502 || response.status === 504 || response.status === 503) {
+              errorMessage = `BricDoc backend engine is reconnecting. Please retry your request in a few moments.`;
             } else if (rawText.length < 300 && !rawText.includes("<!DOCTYPE")) {
               errorMessage = rawText;
             } else {
@@ -377,6 +388,46 @@ class ApiClient {
     return this.request("/subscription/upgrade", {
       method: "POST",
       body: JSON.stringify({ plan_tier: planTier, promo_code: promoCode }),
+    });
+  }
+
+  async setupPaymentMethod(data: {
+    payment_type: "card" | "upi";
+    card_number?: string;
+    exp_month?: string;
+    exp_year?: string;
+    cvv?: string;
+    cardholder_name?: string;
+    upi_vpa?: string;
+    plan_tier?: string;
+    promo_applied?: boolean;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    payment_method?: any;
+    subscription?: any;
+  }> {
+    return this.request("/subscription/setup-payment-method", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getPaymentMethod(): Promise<{
+    has_payment_method: boolean;
+    payment_method: any;
+    subscription: any;
+  }> {
+    return this.request("/subscription/payment-method");
+  }
+
+  async cancelAutoRenew(): Promise<{
+    success: boolean;
+    message: string;
+    auto_renew_enabled: boolean;
+  }> {
+    return this.request("/subscription/cancel-auto-renew", {
+      method: "POST",
     });
   }
 }
