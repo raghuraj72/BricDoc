@@ -93,20 +93,16 @@ def register(user_in: UserRegister, db: Session = Depends(get_db)):
     new_profile = Profile(user_id=new_user.id)
     db.add(new_profile)
 
-    # Create initial subscription
-    if user_in.plan == "pro" or user_in.promo_code in ("dollar1", "PRO1DOLLAR", "DOLLAR1"):
-        new_sub = Subscription(
-            user_id=new_user.id,
-            plan_tier="pro",
-            status="active",
-            max_storage_bytes=10 * 1024 * 1024 * 1024,
-            max_file_size_mb=2048,
-            ai_credits_monthly=500,
-            first_time_offer_used=True,
-            current_period_end=datetime.now(timezone.utc) + timedelta(days=30)
-        )
-    else:
-        new_sub = Subscription(user_id=new_user.id, plan_tier="free")
+    # All registered users start on Free tier until real payment gateway checkout completes
+    new_sub = Subscription(
+        user_id=new_user.id,
+        plan_tier="free",
+        status="active",
+        max_storage_bytes=500 * 1024 * 1024,
+        max_file_size_mb=25,
+        ai_credits_monthly=50,
+        first_time_offer_used=False
+    )
     db.add(new_sub)
 
     # Audit log

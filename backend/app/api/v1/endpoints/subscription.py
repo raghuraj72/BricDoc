@@ -58,39 +58,12 @@ def claim_first_time_offer(
         }
 
     sub = current_user.subscription
-    if not sub:
-        sub = Subscription(user_id=current_user.id)
-        db.add(sub)
-        db.flush()
-
-    # Apply Pro upgrade
-    sub.plan_tier = "pro"
-    sub.status = "active"
-    sub.max_storage_bytes = 10 * 1024 * 1024 * 1024  # 10 GB
-    sub.max_file_size_mb = 2048  # 2 GB
-    sub.ai_credits_monthly = 500
-    sub.first_time_offer_used = True
-    sub.current_period_end = datetime.now(timezone.utc) + timedelta(days=30)
-
-    # Clear today's daily limit counter for this user so they can immediately process files
-    today_str = UsageLimiter.get_today_string()
-    user_identifier = f"user:{current_user.id}"
-    record = db.query(DailyUsage).filter(
-        DailyUsage.identifier == user_identifier,
-        DailyUsage.usage_date == today_str
-    ).first()
-    if record:
-        record.files_count = 0
-
-    db.commit()
-    db.refresh(sub)
-
+    # To prevent unverified/fake activations, requiring payment gateway checkout
     return {
-        "success": True,
-        "message": "Welcome to BricDoc Pro! Your $1 introductory offer is active. Unlimited document processing unlocked.",
-        "plan_tier": "pro",
-        "first_time_offer_used": True,
-        "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None
+        "success": False,
+        "requires_payment": True,
+        "redirect_url": "/subscription/setup-payment?plan=pro&promo=dollar1",
+        "message": "Please complete the $1 / ₹85 introductory payment through the secure payment gateway to activate BricDoc Pro."
     }
 
 

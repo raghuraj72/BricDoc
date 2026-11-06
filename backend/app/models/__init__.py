@@ -1,5 +1,5 @@
 from app.core.database import Base
-from app.models.user import User, Profile, Subscription, DailyUsage, PaymentMethod
+from app.models.user import User, Profile, Subscription, DailyUsage, PaymentMethod, PaymentOrder, PaymentTransaction
 from app.models.document import Document, Folder, DocumentVersion, DocumentTag, DocumentShare
 from app.models.job import ProcessingJob, JobEvent
 from app.models.workflow import Workflow, WorkflowStep, WorkflowExecution

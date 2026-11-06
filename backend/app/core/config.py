@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY", None)
     DEFAULT_GEMINI_MODEL: str = os.getenv("DEFAULT_GEMINI_MODEL", "gemini-2.5-flash")
     
+    # Payment Gateway Configuration (Razorpay & Stripe)
+    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "rzp_test_BricDoc2026")
+    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "bricdoc_rzp_sec_2026_verified")
+    STRIPE_PUBLIC_KEY: Optional[str] = os.getenv("STRIPE_PUBLIC_KEY", None)
+    STRIPE_SECRET_KEY: Optional[str] = os.getenv("STRIPE_SECRET_KEY", None)
+    
     # Background Processing & Concurrency
     MAX_WORKER_CONCURRENCY: int = 4
     JOB_TIMEOUT_SECONDS: int = 300

@@ -430,6 +430,68 @@ class ApiClient {
       method: "POST",
     });
   }
+
+  // Real Payment Gateway Endpoints
+  async getPaymentConfig(): Promise<{
+    gateway: string;
+    razorpay_key_id: string;
+    stripe_public_key?: string;
+    is_test_mode: boolean;
+    pricing: {
+      intro_usd: number;
+      intro_inr: number;
+      intro_paise: number;
+      renewal_usd: number;
+      renewal_inr: number;
+      currency: string;
+    };
+    supported_methods: string[];
+  }> {
+    return this.request("/payments/config");
+  }
+
+  async createPaymentOrder(data: { plan?: string; currency?: string } = {}): Promise<{
+    success: boolean;
+    order_id: string;
+    amount: number;
+    currency: string;
+    key_id: string;
+    name: string;
+    description: string;
+    prefill: {
+      name: string;
+      email: string;
+    };
+    theme: {
+      color: string;
+    };
+  }> {
+    return this.request("/payments/create-order", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async verifyPayment(data: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    method?: string;
+    vpa?: string;
+    card_network?: string;
+    card_last4?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    plan_tier: string;
+    payment_id: string;
+    current_period_end: string;
+  }> {
+    return this.request("/payments/verify", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const api = new ApiClient();
