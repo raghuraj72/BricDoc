@@ -10,7 +10,8 @@ from app.api.v1.endpoints import (
     ai,
     workflows,
     jobs,
-    admin
+    admin,
+    subscription
 )
 
 api_router = APIRouter()
@@ -37,4 +38,5 @@ api_router.include_router(editor.router, prefix="/editor", tags=["Document Edito
 api_router.include_router(ai.router, prefix="/ai", tags=["AI Document Intelligence"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["Custom Workflows"])
 api_router.include_router(jobs.router, prefix="/jobs", tags=["Background Jobs"])
+api_router.include_router(subscription.router, prefix="/subscription", tags=["Subscription & Usage"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Administration & Health"])

@@ -1,7 +1,7 @@
 import json
 import base64
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -10,6 +10,7 @@ from app.api.v1.endpoints.auth import get_current_user_optional, get_current_use
 from app.models.user import User
 from app.models.document import Document
 from app.services.pdf_editor import PDFEditorService
+from app.services.usage_limiter import UsageLimiter
 
 router = APIRouter()
 
@@ -180,6 +181,7 @@ async def replace_editor_block(
 
 @router.post("/save-edits")
 async def save_editor_changes(
+    request: Request,
     file: Optional[UploadFile] = File(None),
     document_id: Optional[str] = Form(None),
     edits_json: str = Form(...),
@@ -191,6 +193,8 @@ async def save_editor_changes(
     Apply visual edits, text boxes, freehand annotations, and highlights to a PDF.
     Returns the modified PDF or saves it to the user's vault.
     """
+    # Verify and increment daily usage
+    UsageLimiter.check_and_increment(request=request, db=db, user=current_user, file_count=1)
     if file:
         pdf_bytes = await file.read()
         filename = file.filename or "edited.pdf"

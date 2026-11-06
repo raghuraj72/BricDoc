@@ -134,7 +134,10 @@ class ApiClient {
       } catch {
         // Stream could not be read
       }
-      throw new Error(errorMessage);
+      const err: any = new Error(errorMessage);
+      err.status = response.status;
+      err.isLimitExceeded = response.status === 429 || errorMessage.includes("DAILY_LIMIT_EXCEEDED") || errorMessage.includes("limit of 10 files");
+      throw err;
     }
 
     // If response is a downloadable binary (PDF, ZIP, DOCX, Excel, Images, etc.)
@@ -331,6 +334,49 @@ class ApiClient {
     return this.request<Blob>("/editor/replace-block", {
       method: "POST",
       body: formData,
+    });
+  }
+
+  // Daily Usage & Subscription Quota
+  async getDailyUsage(): Promise<{
+    plan_tier: string;
+    is_pro: boolean;
+    daily_limit: number | null;
+    daily_used: number;
+    daily_remaining: number;
+    is_limit_exceeded: boolean;
+    first_time_offer: {
+      eligible: boolean;
+      promo_price_usd: number;
+      regular_price_usd: number;
+      discount_pct: number;
+      headline?: string;
+      terms?: string;
+    };
+  }> {
+    return this.request("/subscription/usage");
+  }
+
+  async claimFirstTimeOffer(): Promise<{
+    success: boolean;
+    message: string;
+    plan_tier?: string;
+    requires_auth?: boolean;
+    redirect_url?: string;
+  }> {
+    return this.request("/subscription/claim-first-time-offer", {
+      method: "POST",
+    });
+  }
+
+  async upgradeSubscription(planTier: string = "pro", promoCode?: string): Promise<{
+    success: boolean;
+    message: string;
+    plan_tier: string;
+  }> {
+    return this.request("/subscription/upgrade", {
+      method: "POST",
+      body: JSON.stringify({ plan_tier: planTier, promo_code: promoCode }),
     });
   }
 }

@@ -52,3 +52,6 @@ Thumbs.db
 mobile/node_modules/
 mobile/android/
 *.keystore
+
+.vercel
+.env*

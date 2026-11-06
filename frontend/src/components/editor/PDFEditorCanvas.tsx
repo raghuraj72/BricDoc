@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
+import { DailyLimitModal } from "@/components/modals/DailyLimitModal";
 import {
   Type,
   PenTool,
@@ -80,6 +81,9 @@ export function PDFEditorCanvas() {
   const [currentLine, setCurrentLine] = useState<[number, number][]>([]);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null);
+
+  // Limit modal
+  const [showLimitModal, setShowLimitModal] = useState(false);
 
   // Tool settings
   const [textColor, setTextColor] = useState<string>("#1e293b");
@@ -844,6 +848,14 @@ export function PDFEditorCanvas() {
 
       setStatusMessage({ type: "success", text: "Edited document downloaded successfully." });
     } catch (err: any) {
+      if (
+        err.status === 429 ||
+        err.isLimitExceeded ||
+        err.message?.includes("DAILY_LIMIT_EXCEEDED") ||
+        err.message?.includes("limit of 10 files")
+      ) {
+        setShowLimitModal(true);
+      }
       setStatusMessage({ type: "error", text: err.message || "Failed to save edits to PDF." });
     } finally {
       setIsSaving(false);
@@ -1517,6 +1529,13 @@ export function PDFEditorCanvas() {
           </div>
         </div>
       )}
+
+      {/* Daily Limit Modal */}
+      <DailyLimitModal
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        usedFiles={10}
+      />
     </div>
   );
 }

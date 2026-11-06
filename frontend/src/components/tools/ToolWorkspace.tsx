@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { ToolDefinition } from "@/lib/tool-registry";
 import { api } from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { DailyLimitModal } from "@/components/modals/DailyLimitModal";
 import {
   Upload,
   FileCheck,
@@ -15,7 +16,9 @@ import {
   CheckCircle2,
   Settings2,
   Lock,
-  ArrowRight
+  ArrowRight,
+  Zap,
+  Sparkles
 } from "lucide-react";
 
 interface ToolWorkspaceProps {
@@ -35,6 +38,23 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
   const [downloadFilename, setDownloadFilename] = useState<string>("");
   const [resultMeta, setResultMeta] = useState<{ origSize?: number; newSize?: number; reduction?: string } | null>(null);
   const [jsonReport, setJsonReport] = useState<any>(null);
+  const [showLimitModal, setShowLimitModal] = useState(false);
+  const [dailyUsage, setDailyUsage] = useState<{ used: number; limit: number | null; isPro: boolean; remaining: number } | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    api.getDailyUsage().then((res) => {
+      if (isMounted && res) {
+        setDailyUsage({
+          used: res.daily_used,
+          limit: res.daily_limit,
+          isPro: res.is_pro,
+          remaining: res.daily_remaining,
+        });
+      }
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
 
   // Common tool settings
   const [options, setOptions] = useState<Record<string, any>>({
@@ -117,6 +137,11 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
       return;
     }
 
+    if (dailyUsage && !dailyUsage.isPro && dailyUsage.remaining <= 0) {
+      setShowLimitModal(true);
+      return;
+    }
+
     setIsProcessing(true);
     setError(null);
 
@@ -174,7 +199,26 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
         const red = (((orig - comp) / orig) * 100).toFixed(1);
         setResultMeta({ origSize: orig, newSize: comp, reduction: red });
       }
+
+      // Update local quota count
+      setDailyUsage((prev) =>
+        prev
+          ? {
+              ...prev,
+              used: prev.used + 1,
+              remaining: Math.max(0, prev.remaining - 1),
+            }
+          : null
+      );
     } catch (err: any) {
+      if (
+        err.status === 429 ||
+        err.isLimitExceeded ||
+        err.message?.includes("DAILY_LIMIT_EXCEEDED") ||
+        err.message?.includes("limit of 10 files")
+      ) {
+        setShowLimitModal(true);
+      }
       setError(err.message || "Failed to process document. Please check file format and try again.");
     } finally {
       setIsProcessing(false);
@@ -473,6 +517,30 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
               </div>
             )}
 
+            {/* Daily Usage Quota Indicator */}
+            <div className="flex items-center justify-between text-xs px-1 text-slate-500">
+              {dailyUsage?.isPro ? (
+                <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <Sparkles className="w-3.5 h-3.5" /> BricDoc Pro Active • Unlimited Processing
+                </span>
+              ) : (
+                <div className="flex items-center justify-between w-full">
+                  <span className="flex items-center gap-1 font-medium text-slate-600 dark:text-slate-400">
+                    <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    Free Daily Quota: <strong>{dailyUsage?.used ?? 0}/10</strong> files used today
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowLimitModal(true)}
+                    className="inline-flex items-center gap-1 text-brand-600 dark:text-brand-400 font-bold hover:underline"
+                  >
+                    <span>$1 Pro Offer</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Action Button */}
             <button
               onClick={handleProcess}
@@ -549,6 +617,16 @@ export function ToolWorkspace({ tool, customOptionsRenderer }: ToolWorkspaceProp
           </div>
         )}
       </div>
+
+      {/* Daily Usage Limit Modal */}
+      <DailyLimitModal
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        usedFiles={dailyUsage?.used ?? 10}
+        onSuccess={() => {
+          setDailyUsage((prev) => (prev ? { ...prev, isPro: true, remaining: 999999 } : null));
+        }}
+      />
     </div>
   );
 }

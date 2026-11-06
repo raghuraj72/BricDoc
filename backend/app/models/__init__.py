@@ -1,5 +1,5 @@
 from app.core.database import Base
-from app.models.user import User, Profile, Subscription
+from app.models.user import User, Profile, Subscription, DailyUsage
 from app.models.document import Document, Folder, DocumentVersion, DocumentTag, DocumentShare
 from app.models.job import ProcessingJob, JobEvent
 from app.models.workflow import Workflow, WorkflowStep, WorkflowExecution
@@ -11,6 +11,7 @@ __all__ = [
     "User",
     "Profile",
     "Subscription",
+    "DailyUsage",
     "Document",
     "Folder",
     "DocumentVersion",

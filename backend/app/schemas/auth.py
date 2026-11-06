@@ -6,6 +6,8 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
     full_name: Optional[str] = None
+    plan: Optional[str] = "free"
+    promo_code: Optional[str] = None
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -40,6 +42,7 @@ class SubscriptionOut(BaseModel):
     max_file_size_mb: int
     ai_credits_monthly: int
     ai_credits_used: int
+    first_time_offer_used: bool = False
     current_period_end: Optional[datetime] = None
 
 class UserOut(BaseModel):

@@ -60,7 +60,20 @@ class Subscription(Base):
     max_file_size_mb = Column(Integer, default=25)
     ai_credits_monthly = Column(Integer, default=50)
     ai_credits_used = Column(Integer, default=0)
+    first_time_offer_used = Column(Boolean, default=False)
     current_period_end = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="subscription")
+
+
+class DailyUsage(Base):
+    __tablename__ = "daily_usages"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    identifier = Column(String(128), index=True, nullable=False)  # "user:<id>" or "ip:<ip_addr>"
+    usage_date = Column(String(10), index=True, nullable=False)   # "YYYY-MM-DD" in UTC
+    files_count = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+

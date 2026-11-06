@@ -2,7 +2,7 @@ import io
 import json
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, status
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -15,8 +15,16 @@ from app.services.pdf_converter import PDFConverter
 from app.services.pdf_security import PDFSecurity
 from app.services.pdf_ocr import PDFOCRService
 from app.services.pdf_utilities import PDFUtilities
+from app.services.usage_limiter import UsageLimiter
 
-router = APIRouter()
+def enforce_daily_usage_limit(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
+    UsageLimiter.check_and_increment(request=request, db=db, user=current_user, file_count=1)
+
+router = APIRouter(dependencies=[Depends(enforce_daily_usage_limit)])
 
 def _save_or_return(
     data: bytes,
