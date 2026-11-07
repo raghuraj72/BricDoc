@@ -27,7 +27,7 @@ from app.models.payment import (
     WebhookEvent,
     SubscriptionEvent
 )
-from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.auth import get_current_user, get_current_user_optional
 from app.services.pricing import PricingEngine
 from app.services.razorpay_service import RazorpayService, RazorpayServiceError
 from app.services.subscription_service import SubscriptionService
@@ -72,7 +72,7 @@ class RefundRequest(BaseModel):
 # Configuration & Management
 # -----------------------------------------------------------------------------
 @router.get("/config")
-def get_payment_config(current_user: Optional[User] = Depends(get_current_user)):
+def get_payment_config(current_user: Optional[User] = Depends(get_current_user_optional)):
     """
     Returns public gateway configuration, active key IDs, and verified server pricing.
     """
