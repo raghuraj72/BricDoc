@@ -7,7 +7,6 @@ import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import {
   CreditCard,
-  QrCode,
   ShieldCheck,
   Lock,
   CheckCircle2,
@@ -24,7 +23,9 @@ import {
   ExternalLink,
   Key,
   X,
-  Check
+  Check,
+  Download,
+  Building2
 } from "lucide-react";
 
 declare global {
@@ -36,7 +37,7 @@ declare global {
 function SetupPaymentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const planParam = searchParams.get("plan") || "pro";
+  const planParam = (searchParams.get("plan") || "pro").toLowerCase();
   const promoParam = searchParams.get("promo") || "dollar1";
 
   const { user, isAuthenticated, isLoading, refreshUser } = useAuth();
@@ -44,30 +45,18 @@ function SetupPaymentContent() {
   const [paymentConfig, setPaymentConfig] = useState<any>(null);
   const [loadingConfig, setLoadingConfig] = useState(true);
 
-  // Active payment method tab: "upi" | "card"
-  const [activeTab, setActiveTab] = useState<"upi" | "card">("upi");
+  // Customer Billing Info
+  const [billingName, setBillingName] = useState(user?.full_name || "");
+  const [billingEmail, setBillingEmail] = useState(user?.email || "");
+  const [billingAddress, setBillingAddress] = useState("India");
 
-  // UPI Form state
-  const [upiVpa, setUpiVpa] = useState("raghuraj@okhdfcbank");
-  const [selectedUpiApp, setSelectedUpiApp] = useState("gpay");
-
-  // Card Form state
-  const [cardNumber, setCardNumber] = useState("4111 2222 3333 4444");
-  const [expMonth, setExpMonth] = useState("12");
-  const [expYear, setExpYear] = useState("2028");
-  const [cvv, setCvv] = useState("789");
-  const [cardholderName, setCardholderName] = useState(user?.full_name || "Raghuraj");
-
-  // 3D-Secure Bank OTP Modal state
-  const [showOtpModal, setShowOtpModal] = useState(false);
-  const [otpValue, setOtpValue] = useState("");
-  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
-
-  // Custom Razorpay Keys Modal state
+  // Custom Keys Modal state
   const [showKeysModal, setShowKeysModal] = useState(false);
   const [customKeyId, setCustomKeyId] = useState("");
   const [customKeySecret, setCustomKeySecret] = useState("");
+  const [customWebhookSecret, setCustomWebhookSecret] = useState("");
   const [savingKeys, setSavingKeys] = useState(false);
+  const [keySaveMessage, setKeySaveMessage] = useState<string | null>(null);
 
   const [mandateConsent, setMandateConsent] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -91,6 +80,13 @@ function SetupPaymentContent() {
     };
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      if (!billingName && user.full_name) setBillingName(user.full_name);
+      if (!billingEmail && user.email) setBillingEmail(user.email);
+    }
+  }, [user]);
+
   const fetchGatewayConfig = async () => {
     try {
       setLoadingConfig(true);
@@ -109,30 +105,47 @@ function SetupPaymentContent() {
     }
   }, [isLoading, isAuthenticated, router, planParam, promoParam]);
 
-  // Format Card Number
-  const formatCardNumber = (val: string) => {
-    const clean = val.replace(/\D/g, "").slice(0, 16);
-    return clean.replace(/(\d{4})/g, "$1 ").trim();
+  // Selected plan calculation
+  const planTier = planParam === "business" ? "business" : "pro";
+  const isIntroPromo = planTier === "pro" && promoParam === "dollar1";
+
+  const proCatalog = paymentConfig?.pricing_catalog?.pro || {
+    intro_price_usd: 1.0,
+    intro_price_inr: 85.0,
+    monthly_price_usd: 12.0,
+    monthly_price_inr: 999.0,
   };
 
-  // Card brand detector
-  const getCardBrand = (num: string) => {
-    const clean = num.replace(/\D/g, "");
-    if (clean.startsWith("4")) return "Visa";
-    if (clean.startsWith("5") || clean.startsWith("2")) return "Mastercard";
-    if (clean.startsWith("6") || clean.startsWith("508")) return "RuPay";
-    if (clean.startsWith("3")) return "Amex";
-    return "Card";
+  const businessCatalog = paymentConfig?.pricing_catalog?.business || {
+    monthly_price_usd: 39.0,
+    monthly_price_inr: 3299.0,
   };
 
-  // 1. UPI Payment Handler
-  const handleUpiPay = async () => {
+  const taxRate = paymentConfig?.pricing_catalog?.tax_rate_percent || 18.0;
+
+  // Amount today calculations
+  const payableInr = planTier === "business"
+    ? businessCatalog.monthly_price_inr
+    : (isIntroPromo ? proCatalog.intro_price_inr : proCatalog.monthly_price_inr);
+
+  const subtotalInr = Math.round((payableInr / (1 + taxRate / 100)) * 100) / 100;
+  const taxInr = Math.round((payableInr - subtotalInr) * 100) / 100;
+
+  // Launch Authentic Razorpay Standard Checkout
+  const handleLaunchPayment = async () => {
     if (!mandateConsent) {
-      setError("Please check the auto-renewal authorization box to proceed.");
+      setError("Please check the billing authorization box to proceed.");
       return;
     }
-    if (!upiVpa.trim() || !upiVpa.includes("@")) {
-      setError("Please enter a valid UPI ID (e.g. yourname@okhdfcbank or phone@paytm).");
+
+    if (!paymentConfig?.is_configured) {
+      setError("Razorpay Merchant credentials are required before launching checkout. Please connect your Razorpay Key ID and Secret below.");
+      setShowKeysModal(true);
+      return;
+    }
+
+    if (typeof window.Razorpay === "undefined") {
+      setError("Payment gateway script is still loading. Please check your internet connection and try again.");
       return;
     }
 
@@ -140,155 +153,59 @@ function SetupPaymentContent() {
     setError(null);
 
     try {
-      // Create Order
-      const orderData = await api.createPaymentOrder({ plan: "pro", currency: "INR" });
-      if (!orderData || !orderData.order_id) {
-        throw new Error("Could not initialize payment order.");
-      }
-
-      // If merchant configured live Razorpay keys, try official popup
-      if (paymentConfig?.has_real_gateway_keys && typeof window.Razorpay !== "undefined") {
-        launchOfficialRazorpay(orderData);
-        return;
-      }
-
-      // Process Verified UPI Gateway
-      setVerifying(true);
-      const res = await api.processUpiPayment({
-        order_id: orderData.order_id,
-        vpa: upiVpa.trim(),
-        app_name: selectedUpiApp,
+      // 1. Create Authentic Server-Side Order
+      const orderData = await api.createPaymentOrder({
+        plan: planTier,
+        currency: "INR",
+        billing_name: billingName.trim() || user?.full_name || "Customer",
+        billing_email: billingEmail.trim() || user?.email || ""
       });
 
-      if (res.success) {
-        setPaymentSuccess(res);
-        await refreshUser();
-        setTimeout(() => router.push("/dashboard"), 2500);
-      } else {
-        setError(res.message || "UPI payment verification failed.");
-      }
-    } catch (err: any) {
-      setError(err.message || "Failed to process UPI payment.");
-    } finally {
-      setSubmitting(false);
-      setVerifying(false);
-    }
-  };
-
-  // 2. Card Payment Initiate (Opens 3D-Secure Bank OTP Modal)
-  const handleCardInitiate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!mandateConsent) {
-      setError("Please check the auto-renewal authorization box to proceed.");
-      return;
-    }
-
-    const cleanCard = cardNumber.replace(/\D/g, "");
-    if (cleanCard.length < 13) {
-      setError("Please enter a valid 16-digit debit or credit card number.");
-      return;
-    }
-    if (cvv.length < 3) {
-      setError("Please enter a valid 3 or 4 digit CVV/CVC.");
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      // Create authentic order
-      const orderData = await api.createPaymentOrder({ plan: "pro", currency: "INR" });
       if (!orderData || !orderData.order_id) {
-        throw new Error("Could not initialize payment order.");
+        throw new Error("Could not initialize payment order from Razorpay.");
       }
 
-      // If real Razorpay keys are connected, launch official Razorpay
-      if (paymentConfig?.has_real_gateway_keys && typeof window.Razorpay !== "undefined") {
-        launchOfficialRazorpay(orderData);
-        return;
-      }
-
-      // Open 3D-Secure Bank OTP Challenge
-      setCurrentOrderId(orderData.order_id);
-      setOtpValue("123456"); // Pre-fill test OTP for immediate verification
-      setShowOtpModal(true);
-    } catch (err: any) {
-      setError(err.message || "Failed to initiate card authorization.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // 3. Card 3D-Secure OTP Submit & Verification
-  const handleCardOtpSubmit = async () => {
-    if (!currentOrderId) return;
-    if (!otpValue.trim() || otpValue.trim().length < 4) {
-      setError("Please enter the 6-digit 3D-Secure OTP code.");
-      return;
-    }
-
-    setVerifying(true);
-    setError(null);
-
-    try {
-      const res = await api.processCardOtp({
-        order_id: currentOrderId,
-        card_number: cardNumber.replace(/\D/g, ""),
-        exp_month: expMonth,
-        exp_year: expYear,
-        cvv: cvv,
-        cardholder_name: cardholderName,
-        otp: otpValue.trim(),
-      });
-
-      if (res.success) {
-        setShowOtpModal(false);
-        setPaymentSuccess(res);
-        await refreshUser();
-        setTimeout(() => router.push("/dashboard"), 2500);
-      } else {
-        setError(res.message || "3D-Secure authentication failed.");
-      }
-    } catch (err: any) {
-      setError(err.message || "Card verification failed.");
-    } finally {
-      setVerifying(false);
-    }
-  };
-
-  // 4. Launch Official Razorpay Popup (when real keys are provided)
-  const launchOfficialRazorpay = (orderData: any) => {
-    try {
+      // 2. Configure Official Razorpay Standard Checkout
       const options = {
         key: orderData.key_id,
         amount: orderData.amount,
         currency: orderData.currency,
         name: "BricDoc Workspace",
-        description: "BricDoc Pro First-Time Intro Offer ($1.00 / ₹85)",
+        description: `BricDoc ${planTier.toUpperCase()} Membership`,
         order_id: orderData.order_id,
         prefill: {
-          name: user?.full_name || "BricDoc Member",
-          email: user?.email || "",
+          name: billingName || user?.full_name || "BricDoc Member",
+          email: billingEmail || user?.email || "",
         },
-        theme: { color: "#4f46e5" },
+        notes: {
+          plan_tier: planTier,
+          user_id: user?.id
+        },
+        theme: {
+          color: "#4f46e5"
+        },
         handler: async function (response: any) {
+          // Cryptographic server-side verification
           setVerifying(true);
           try {
             const verifyRes = await api.verifyPayment({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
+              billing_name: billingName,
+              billing_email: billingEmail,
+              billing_address: billingAddress
             });
+
             if (verifyRes.success) {
               setPaymentSuccess(verifyRes);
               await refreshUser();
-              setTimeout(() => router.push("/dashboard"), 2500);
+              setTimeout(() => router.push("/dashboard"), 3500);
             } else {
               setError(verifyRes.message || "Payment verification failed.");
             }
           } catch (err: any) {
-            setError(err.message || "Cryptographic verification failed.");
+            setError(err.message || "Cryptographic HMAC-SHA256 signature verification failed.");
           } finally {
             setVerifying(false);
           }
@@ -296,36 +213,49 @@ function SetupPaymentContent() {
         modal: {
           ondismiss: function () {
             setSubmitting(false);
-            setError("Payment window was dismissed without completing authorization.");
-          },
-        },
+            setError("Payment window closed without completing payment. Your account has not been charged.");
+          }
+        }
       };
 
       const rzpInstance = new window.Razorpay(options);
+      rzpInstance.on("payment.failed", function (failRes: any) {
+        setSubmitting(false);
+        const errDesc = failRes?.error?.description || "Payment failed at issuing bank.";
+        setError(`Payment failed: ${errDesc}`);
+      });
+
       rzpInstance.open();
+
     } catch (err: any) {
-      setError(err.message || "Could not launch Razorpay window.");
+      setError(err.message || "Failed to initiate payment gateway.");
+      setSubmitting(false);
     }
   };
 
-  // 5. Connect Custom Merchant Keys
+  // Connect Custom Merchant Keys
   const handleSaveCustomKeys = async () => {
     if (!customKeyId.trim() || !customKeySecret.trim()) {
-      alert("Both Key ID and Key Secret are required.");
+      setKeySaveMessage("Both Key ID and Key Secret are required.");
       return;
     }
 
     setSavingKeys(true);
+    setKeySaveMessage(null);
     try {
       const res = await api.setPaymentKeys({
         razorpay_key_id: customKeyId.trim(),
         razorpay_key_secret: customKeySecret.trim(),
+        razorpay_webhook_secret: customWebhookSecret.trim() || undefined,
       });
-      alert(res.message);
-      setShowKeysModal(false);
+      setKeySaveMessage(res.message);
       await fetchGatewayConfig();
+      setTimeout(() => {
+        setShowKeysModal(false);
+        setKeySaveMessage(null);
+      }, 1500);
     } catch (err: any) {
-      alert(err.message || "Failed to validate Razorpay keys.");
+      setKeySaveMessage(err.message || "Failed to validate Razorpay keys with Razorpay API.");
     } finally {
       setSavingKeys(false);
     }
@@ -336,7 +266,7 @@ function SetupPaymentContent() {
       <div className="min-h-[70vh] flex items-center justify-center">
         <div className="flex items-center gap-2.5 text-xs text-slate-500">
           <RefreshCw className="w-4 h-4 animate-spin text-brand-600" />
-          <span>Connecting to secure payment gateway...</span>
+          <span>Connecting to payment infrastructure...</span>
         </div>
       </div>
     );
@@ -347,81 +277,168 @@ function SetupPaymentContent() {
       {/* Header */}
       <div className="text-center max-w-xl mx-auto space-y-2">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 text-brand-700 dark:text-brand-300 text-[11px] font-bold">
-          <Zap className="w-3.5 h-3.5 fill-current" />
-          <span>VERIFIED PAYMENT GATEWAY</span>
+          <ShieldCheck className="w-3.5 h-3.5 fill-current" />
+          <span>PRODUCTION-GRADE RAZORPAY GATEWAY</span>
         </div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Activate BricDoc Pro
+          Activate BricDoc {planTier.toUpperCase()}
         </h1>
         <p className="text-xs sm:text-sm text-slate-500">
-          Introductory offer: pay only $1.00 USD (₹85 INR) today. Verified 3D-Secure and UPI AutoPay gateway.
+          Real money checkout powered by Razorpay. All transactions are cryptographically verified and backed by tax invoices.
         </p>
       </div>
+
+      {/* Gateway Status Banner */}
+      {!paymentConfig?.is_configured ? (
+        <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-200">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+            <div>
+              <span className="font-bold">Merchant Setup Required: </span>
+              <span>Connect your Razorpay Key ID & Key Secret to start receiving real payments in your bank account.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowKeysModal(true)}
+            className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs shrink-0 flex items-center gap-1.5 transition-colors shadow-sm"
+          >
+            <Key className="w-3.5 h-3.5" />
+            <span>Connect Razorpay Keys</span>
+          </button>
+        </div>
+      ) : (
+        <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-2xl flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              Razorpay Gateway Active ({paymentConfig.mode === "live" ? "Live Production Mode" : "Test Mode"}) — Key ID: <code className="font-mono">{paymentConfig.razorpay_key_id}</code>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowKeysModal(true)}
+            className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1"
+          >
+            <span>Change Keys</span>
+          </button>
+        </div>
+      )}
 
       {/* Error Alert */}
       {error && (
         <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-2xl text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2.5 max-w-2xl mx-auto shadow-sm">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-          <div>
-            <span className="font-bold">Payment Error: </span>
+          <div className="space-y-1">
+            <span className="font-bold">Checkout Notice: </span>
             <span>{error}</span>
           </div>
         </div>
       )}
 
-      {/* Success State */}
-      {paymentSuccess && (
-        <div className="p-8 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-3xl text-center space-y-3 max-w-xl mx-auto shadow-soft-lg animate-in fade-in">
-          <div className="w-14 h-14 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto shadow-md">
-            <CheckCircle2 className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-            Payment Verified & Pro Active!
-          </h2>
-          <p className="text-xs text-slate-600 dark:text-slate-400">
-            {paymentSuccess.message}
-          </p>
-          <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60 text-xs font-mono text-slate-700 dark:text-slate-300">
-            Payment ID: {paymentSuccess.payment_id}
-          </div>
-          <p className="text-[11px] text-slate-400">
-            Redirecting to your private intelligent workspace...
+      {/* Verifying Overlay */}
+      {verifying && (
+        <div className="p-6 bg-brand-50 dark:bg-brand-950/50 border border-brand-200 dark:border-brand-800 rounded-3xl text-center space-y-3 max-w-md mx-auto shadow-soft-md">
+          <RefreshCw className="w-8 h-8 animate-spin text-brand-600 mx-auto" />
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">
+            Verifying Cryptographic Payment Signature...
+          </h3>
+          <p className="text-xs text-slate-500">
+            Communicating with Razorpay servers and generating official tax invoice.
           </p>
         </div>
       )}
 
-      {!paymentSuccess && (
+      {/* Success State */}
+      {paymentSuccess && (
+        <div className="p-8 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 rounded-3xl text-center space-y-4 max-w-xl mx-auto shadow-soft-lg animate-in fade-in">
+          <div className="w-14 h-14 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto shadow-md">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+            Payment Verified & Subscription Active!
+          </h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            {paymentSuccess.message}
+          </p>
+          <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 text-xs font-mono text-slate-700 dark:text-slate-300 space-y-1 text-left">
+            <div><strong>Payment ID:</strong> {paymentSuccess.payment_id}</div>
+            <div><strong>Order ID:</strong> {paymentSuccess.order_id}</div>
+            {paymentSuccess.invoice_number && (
+              <div><strong>Invoice Number:</strong> {paymentSuccess.invoice_number}</div>
+            )}
+            <div><strong>Valid Through:</strong> {new Date(paymentSuccess.current_period_end).toLocaleDateString()}</div>
+          </div>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            {paymentSuccess.invoice_id && (
+              <a
+                href={`/api/v1/payments/invoices/${paymentSuccess.invoice_id}/download`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Download Invoice PDF</span>
+              </a>
+            )}
+            <Link
+              href="/dashboard"
+              className="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md"
+            >
+              <span>Go to Dashboard</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {!paymentSuccess && !verifying && (
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
           {/* Order Summary */}
           <div className="md:col-span-5 bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-soft-sm space-y-6">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
-                Order Summary
+                Authoritative Pricing
               </span>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-1">
-                BricDoc Pro Membership
+                BricDoc {planTier.toUpperCase()} Membership
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Unlimited document operations, AES-256 cloud vault & AI assistant.
+                {planTier === "business"
+                  ? "100 GB vault, team shared folders & priority processing."
+                  : "Unlimited files, 10 GB cloud vault & grounded AI assistant."}
               </p>
             </div>
 
             <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Standard Pro Price</span>
-                <span className="line-through text-slate-400">$12.00 / mo</span>
+                <span className="text-slate-600 dark:text-slate-400">Subtotal (Net)</span>
+                <span className="font-mono text-slate-900 dark:text-white">₹{subtotalInr.toFixed(2)}</span>
               </div>
-              <div className="flex items-center justify-between font-semibold">
-                <span className="text-emerald-600 dark:text-emerald-400">First-Time Discount</span>
-                <span className="text-emerald-600 dark:text-emerald-400">-$11.00</span>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400">GST ({taxRate}% CGST + SGST)</span>
+                <span className="font-mono text-slate-900 dark:text-white">₹{taxInr.toFixed(2)}</span>
               </div>
+              {isIntroPromo && (
+                <div className="flex items-center justify-between font-semibold">
+                  <span className="text-emerald-600 dark:text-emerald-400">First-Time Discount</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">Applied ($11 off)</span>
+                </div>
+              )}
               <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex items-baseline justify-between">
                 <div>
-                  <div className="text-sm font-extrabold text-slate-900 dark:text-white">Amount Due Today</div>
-                  <div className="text-[10px] text-slate-400">Introductory Month</div>
+                  <div className="text-sm font-extrabold text-slate-900 dark:text-white">Total Amount Due</div>
+                  <div className="text-[10px] text-slate-400">
+                    {isIntroPromo ? "Introductory Month" : "Monthly Billing"}
+                  </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-black text-brand-600 dark:text-brand-400">$1.00 <span className="text-xs font-normal text-slate-400">/ ₹85</span></div>
+                  <div className="text-2xl font-black text-brand-600 dark:text-brand-400">
+                    ₹{payableInr.toFixed(2)}
+                  </div>
+                  <div className="text-[11px] text-slate-400 font-medium">
+                    (Approx. ${planTier === "business" ? "39.00" : (isIntroPromo ? "1.00" : "12.00")} USD)
+                  </div>
                 </div>
               </div>
             </div>
@@ -429,448 +446,247 @@ function SetupPaymentContent() {
             <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 space-y-2 text-xs">
               <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white">
                 <Clock className="w-3.5 h-3.5 text-brand-600" />
-                <span>Subscription Auto-Renew Policy</span>
+                <span>Renewal & Cancellation Terms</span>
               </div>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                After your 30-day introductory month ends, your subscription automatically renews at <strong>$12.00/mo</strong> (or ₹999/mo).
+                {planTier === "business"
+                  ? "Renews monthly at ₹3,299/mo ($39/mo). Can be cancelled at any time from your Billing Settings."
+                  : "First month introductory rate is ₹85.00 ($1.00 USD). Subsequent monthly renewals are ₹999.00/mo ($12.00 USD)."}
               </p>
               <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold pt-1">
                 <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                <span>Cancel anytime in 1 click in Settings with zero penalty.</span>
+                <span>No lock-in. Cancel in 1 click anytime in Billing Settings.</span>
               </div>
-            </div>
-
-            {/* Merchant API Keys Drawer Button */}
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
-              <span className="flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Razorpay Gateway: {paymentConfig?.has_real_gateway_keys ? "Connected" : "Standard Ready"}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowKeysModal(true)}
-                className="text-brand-600 hover:text-brand-700 font-semibold flex items-center gap-1"
-              >
-                <Key className="w-3 h-3" />
-                <span>Custom Keys</span>
-              </button>
             </div>
           </div>
 
-          {/* Payment Method Selector & Gateway */}
+          {/* Checkout Action Panel */}
           <div className="md:col-span-7 bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-soft-sm space-y-6">
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                Select Verified Payment Method
+                Customer & Billing Information
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Processed via 256-bit encrypted bank gateway.
+                These details will appear on your generated GST Tax Invoice.
               </p>
             </div>
 
-            {/* Payment Method Tabs */}
-            <div className="grid grid-cols-2 gap-3 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl">
-              <button
-                type="button"
-                onClick={() => setActiveTab("upi")}
-                className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                  activeTab === "upi"
-                    ? "bg-white dark:bg-slate-700 text-brand-600 dark:text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                <Smartphone className="w-4 h-4" />
-                <span>UPI AutoPay / QR</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("card")}
-                className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                  activeTab === "card"
-                    ? "bg-white dark:bg-slate-700 text-brand-600 dark:text-white shadow-sm"
-                    : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                <CreditCard className="w-4 h-4" />
-                <span>Debit / Credit Card</span>
-              </button>
+            {/* Billing Inputs */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Full Name / Business Name
+                </label>
+                <input
+                  type="text"
+                  value={billingName}
+                  onChange={(e) => setBillingName(e.target.value)}
+                  placeholder="e.g. Raghuraj Pratap Singh"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Billing Email
+                </label>
+                <input
+                  type="email"
+                  value={billingEmail}
+                  onChange={(e) => setBillingEmail(e.target.value)}
+                  placeholder="name@company.com"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Billing Address / Country
+                </label>
+                <input
+                  type="text"
+                  value={billingAddress}
+                  onChange={(e) => setBillingAddress(e.target.value)}
+                  placeholder="City, State, Country"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
             </div>
 
-            {/* TAB 1: UPI PAYMENT */}
-            {activeTab === "upi" && (
-              <div className="space-y-5">
-                {/* UPI App Icons Selector */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    Choose UPI App
-                  </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {[
-                      { id: "gpay", label: "Google Pay", color: "border-blue-500 bg-blue-50/40 text-blue-700" },
-                      { id: "phonepe", label: "PhonePe", color: "border-purple-500 bg-purple-50/40 text-purple-700" },
-                      { id: "paytm", label: "Paytm", color: "border-sky-500 bg-sky-50/40 text-sky-700" },
-                      { id: "bhim", label: "BHIM / Any", color: "border-emerald-500 bg-emerald-50/40 text-emerald-700" },
-                    ].map((app) => (
-                      <button
-                        key={app.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedUpiApp(app.id);
-                          if (app.id === "gpay") setUpiVpa("raghuraj@okhdfcbank");
-                          if (app.id === "phonepe") setUpiVpa("raghuraj@ybl");
-                          if (app.id === "paytm") setUpiVpa("raghuraj@paytm");
-                          if (app.id === "bhim") setUpiVpa("raghuraj@upi");
-                        }}
-                        className={`p-2.5 rounded-xl border text-center text-xs font-bold transition-all ${
-                          selectedUpiApp === app.id
-                            ? `${app.color} ring-2 ring-brand-500/30`
-                            : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
-                        }`}
-                      >
-                        {app.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* UPI VPA Input */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    UPI ID / VPA
-                  </label>
-                  <div className="relative">
-                    <Smartphone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      value={upiVpa}
-                      onChange={(e) => setUpiVpa(e.target.value)}
-                      placeholder="e.g. yourname@okhdfcbank"
-                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-brand-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Dynamic UPI QR Code Display */}
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      <QrCode className="w-4 h-4 text-brand-600" />
-                      <span>Instant UPI QR Scan</span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Scan with Google Pay, PhonePe, or Paytm on your mobile to pay ₹85.00.
-                    </p>
-                    <div className="text-[10px] font-mono text-brand-600 dark:text-brand-400">
-                      Amount: ₹85.00 INR ($1.00 USD)
-                    </div>
-                  </div>
-                  <div className="w-20 h-20 bg-white p-1 rounded-xl border border-slate-200 shadow-sm flex items-center justify-center shrink-0">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=bricdoc@icici&pn=BricDoc&am=85.00&cu=INR&tn=Pro_Subscription`}
-                      alt="UPI QR Code"
-                      className="w-full h-full object-contain rounded"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 2: DEBIT / CREDIT CARD */}
-            {activeTab === "card" && (
-              <form onSubmit={handleCardInitiate} className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Card Number
-                    </label>
-                    <span className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase">
-                      {getCardBrand(cardNumber)}
-                    </span>
-                  </div>
-                  <div className="relative">
-                    <CreditCard className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      maxLength={19}
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                      placeholder="4111 2222 3333 4444"
-                      className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-brand-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Exp Month
-                    </label>
-                    <select
-                      value={expMonth}
-                      onChange={(e) => setExpMonth(e.target.value)}
-                      className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                    >
-                      {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")).map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Exp Year
-                    </label>
-                    <select
-                      value={expYear}
-                      onChange={(e) => setExpYear(e.target.value)}
-                      className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                    >
-                      {["2026", "2027", "2028", "2029", "2030", "2031", "2032"].map((y) => (
-                        <option key={y} value={y}>{y}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      CVV / CVC
-                    </label>
-                    <input
-                      type="password"
-                      maxLength={4}
-                      value={cvv}
-                      onChange={(e) => setCvv(e.target.value.replace(/\D/g, ""))}
-                      placeholder="123"
-                      className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-center"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Cardholder Name
-                  </label>
-                  <input
-                    type="text"
-                    value={cardholderName}
-                    onChange={(e) => setCardholderName(e.target.value)}
-                    placeholder="Name on card"
-                    className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
-                  />
-                </div>
-              </form>
-            )}
-
-            {/* Mandatory Mandate Consent */}
-            <label className="flex items-start gap-2.5 cursor-pointer text-xs select-none">
-              <input
-                type="checkbox"
-                checked={mandateConsent}
-                onChange={(e) => setMandateConsent(e.target.checked)}
-                className="mt-0.5 rounded text-brand-600 focus:ring-brand-500 w-4 h-4"
-              />
-              <span className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
-                I authorize BricDoc to charge $1.00 USD (₹85 INR) today for my first month of BricDoc Pro, and authorize recurring monthly renewal at $12.00/mo (₹999/mo) after 30 days. Cancel anytime in 1 click under Profile Settings.
+            {/* Supported Payment Methods Badge */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
+              <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                Payment Methods Supported via Razorpay:
               </span>
-            </label>
-
-            {/* Primary Action Button */}
-            {activeTab === "upi" ? (
-              <button
-                type="button"
-                onClick={handleUpiPay}
-                disabled={submitting || verifying || !mandateConsent}
-                className="w-full py-3.5 rounded-2xl font-bold text-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center gap-2"
-              >
-                {submitting || verifying ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Verifying Cryptographic Payment Signature...</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4" />
-                    <span>Pay ₹85 ($1.00) via UPI & Activate Pro</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleCardInitiate}
-                disabled={submitting || verifying || !mandateConsent}
-                className="w-full py-3.5 rounded-2xl font-bold text-sm text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center gap-2"
-              >
-                {submitting ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Opening 3D-Secure Bank Challenge...</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4" />
-                    <span>Pay ₹85 ($1.00) via Card (3D Secure)</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* Bank Security Badges */}
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-400">
-              <div className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                <span>PCI-DSS Level 1</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Lock className="w-4 h-4 text-indigo-500" />
-                <span>256-Bit Bank Encryption</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-brand-500" />
-                <span>HMAC Cryptographic Signature</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3D-SECURE BANK OTP AUTHENTICATION MODAL */}
-      {showOtpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 flex items-center justify-center">
-                  <ShieldCheck className="w-4 h-4" />
-                </div>
-                <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-                  3D-Secure Bank Verification
+              <div className="flex flex-wrap gap-2 text-[10px] text-slate-600 dark:text-slate-400">
+                <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold">
+                  UPI (GPay, PhonePe, Paytm, BHIM)
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold">
+                  Dynamic UPI QR Code
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold">
+                  Debit Cards & Credit Cards
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold">
+                  50+ NetBanking Banks
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold">
+                  Wallets (Mobikwik, etc.)
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowOtpModal(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
             </div>
 
-            <div className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
-              <div>Bank: <strong>Verified by Visa / Mastercard ID Check</strong></div>
-              <div>Merchant: <strong>BricDoc Workspace Inc.</strong></div>
-              <div>Amount: <strong className="text-slate-900 dark:text-white font-mono">₹85.00 INR ($1.00 USD)</strong></div>
-            </div>
-
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300">
-              An authentication OTP has been generated for your card ending in <strong>{cardNumber.slice(-4)}</strong>. Use test code: <span className="font-mono font-bold bg-amber-100 dark:bg-amber-900 px-1 py-0.5 rounded">123456</span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Enter 6-Digit One-Time Password (OTP)
+            {/* Mandate Checkbox */}
+            <div className="pt-2">
+              <label className="flex items-start gap-2.5 cursor-pointer text-xs text-slate-600 dark:text-slate-400 select-none">
+                <input
+                  type="checkbox"
+                  checked={mandateConsent}
+                  onChange={(e) => setMandateConsent(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span>
+                  I authorize BricDoc to charge ₹{payableInr.toFixed(2)} today for my BricDoc {planTier.toUpperCase()} membership and agree to the Terms of Service and Privacy Policy.
+                </span>
               </label>
-              <input
-                type="text"
-                maxLength={6}
-                value={otpValue}
-                onChange={(e) => setOtpValue(e.target.value)}
-                placeholder="123456"
-                className="w-full px-3 py-3 text-base text-center font-mono font-bold tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-500"
-              />
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowOtpModal(false)}
-                className="w-1/2 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCardOtpSubmit}
-                disabled={verifying || otpValue.length < 4}
-                className="w-1/2 py-2.5 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md shadow-brand-500/20"
-              >
-                {verifying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
-                <span>Authorize & Pay</span>
-              </button>
+            {/* Launch Checkout Button */}
+            <button
+              type="button"
+              onClick={handleLaunchPayment}
+              disabled={submitting || !mandateConsent}
+              className="w-full py-3.5 px-6 rounded-2xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-extrabold text-sm transition-all shadow-md flex items-center justify-center gap-2 group cursor-pointer"
+            >
+              {submitting ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Connecting to Razorpay...</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4" />
+                  <span>Pay ₹{payableInr.toFixed(2)} with Razorpay</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </>
+              )}
+            </button>
+
+            <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400">
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              <span>PCI-DSS Level 1 Certified • 256-Bit SSL Encrypted Gateway</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* CUSTOM RAZORPAY KEYS MODAL */}
+      {/* Razorpay Merchant Keys Setup Modal */}
       {showKeysModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <Key className="w-4 h-4 text-brand-600" />
-                <span className="text-xs font-bold text-slate-900 dark:text-white">
-                  Connect Your Razorpay Merchant Account
-                </span>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Key className="w-5 h-5 text-brand-600" />
+                  <span>Connect Razorpay Merchant Keys</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Paste your API keys from Razorpay Dashboard to accept real money transactions into your bank account.
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowKeysModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="p-1 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-500 leading-relaxed">
-              To connect your real merchant payouts, get your API Keys from{" "}
-              <a href="https://dashboard.razorpay.com/app/keys" target="_blank" rel="noreferrer" className="text-brand-600 underline">
-                dashboard.razorpay.com/app/keys
-              </a>.
-            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Razorpay Key ID
+                </label>
+                <input
+                  type="text"
+                  value={customKeyId}
+                  onChange={(e) => setCustomKeyId(e.target.value)}
+                  placeholder="rzp_test_... or rzp_live_..."
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Razorpay Key ID (rzp_test_... or rzp_live_...)
-              </label>
-              <input
-                type="text"
-                value={customKeyId}
-                onChange={(e) => setCustomKeyId(e.target.value)}
-                placeholder="rzp_test_..."
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-slate-900 dark:text-white"
-              />
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Razorpay Key Secret
+                </label>
+                <input
+                  type="password"
+                  value={customKeySecret}
+                  onChange={(e) => setCustomKeySecret(e.target.value)}
+                  placeholder="Enter Key Secret from Razorpay Dashboard"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Razorpay Webhook Secret (Optional)
+                </label>
+                <input
+                  type="password"
+                  value={customWebhookSecret}
+                  onChange={(e) => setCustomWebhookSecret(e.target.value)}
+                  placeholder="Optional secret configured in Razorpay Webhooks"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-[11px] text-slate-500 space-y-1">
+                <div>1. Log in to <a href="https://dashboard.razorpay.com/" target="_blank" rel="noreferrer" className="text-brand-600 underline">Razorpay Dashboard</a>.</div>
+                <div>2. Go to <strong>Account & Settings</strong> &rarr; <strong>API Keys</strong>.</div>
+                <div>3. Click <strong>Generate Key</strong> to get your Key ID & Secret.</div>
+                <div>4. Keys are securely validated with Razorpay before being saved.</div>
+              </div>
+
+              {keySaveMessage && (
+                <div className={`p-3 rounded-xl text-xs ${
+                  keySaveMessage.includes("Successfully")
+                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    : "bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300"
+                }`}>
+                  {keySaveMessage}
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Razorpay Key Secret
-              </label>
-              <input
-                type="password"
-                value={customKeySecret}
-                onChange={(e) => setCustomKeySecret(e.target.value)}
-                placeholder="••••••••••••••••"
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-slate-900 dark:text-white"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setShowKeysModal(false)}
-                className="w-1/2 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleSaveCustomKeys}
-                disabled={savingKeys}
-                className="w-1/2 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                disabled={savingKeys || !customKeyId.trim() || !customKeySecret.trim()}
+                className="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-md"
               >
-                {savingKeys ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                <span>Save & Connect</span>
+                {savingKeys ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Validating with Razorpay...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Validate & Save Keys</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -882,7 +698,14 @@ function SetupPaymentContent() {
 
 export default function SetupPaymentPage() {
   return (
-    <Suspense fallback={<div className="min-h-[70vh] flex items-center justify-center text-xs text-slate-400">Loading checkout...</div>}>
+    <Suspense fallback={
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <div className="flex items-center gap-2.5 text-xs text-slate-500">
+          <RefreshCw className="w-4 h-4 animate-spin text-brand-600" />
+          <span>Loading checkout...</span>
+        </div>
+      </div>
+    }>
       <SetupPaymentContent />
     </Suspense>
   );

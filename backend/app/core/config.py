@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "BricDoc API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+    APP_URL: str = os.getenv("APP_URL", "https://bricdoc-raghuraj.vercel.app")
     
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "bricdoc-super-secure-production-ready-jwt-secret-key-2026")
@@ -34,7 +35,7 @@ class Settings(BaseSettings):
         if origin.strip()
     ]
     
-    # Database (Defaults to SQLite for local zero-dependency operation, easily overriden to PostgreSQL)
+    # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/bricdoc.db")
     
     # File Storage
@@ -45,11 +46,22 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY", None)
     DEFAULT_GEMINI_MODEL: str = os.getenv("DEFAULT_GEMINI_MODEL", "gemini-2.5-flash")
     
-    # Payment Gateway Configuration (Razorpay & Stripe)
-    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "rzp_test_BricDoc2026")
-    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "bricdoc_rzp_sec_2026_verified")
+    # Razorpay Payment Gateway Configuration
+    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
+    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = os.getenv("RAZORPAY_WEBHOOK_SECRET", None)
+    RAZORPAY_MODE: str = os.getenv("RAZORPAY_MODE", "test")  # "test" or "live"
+    
+    # Stripe (Optional secondary international gateway)
     STRIPE_PUBLIC_KEY: Optional[str] = os.getenv("STRIPE_PUBLIC_KEY", None)
     STRIPE_SECRET_KEY: Optional[str] = os.getenv("STRIPE_SECRET_KEY", None)
+    
+    # Company / Invoice Configuration
+    COMPANY_NAME: str = os.getenv("COMPANY_NAME", "BricDoc Technologies Private Limited")
+    COMPANY_EMAIL: str = os.getenv("COMPANY_EMAIL", "billing@bricdoc.com")
+    COMPANY_ADDRESS: str = os.getenv("COMPANY_ADDRESS", "Bengaluru, Karnataka, 560001, India")
+    COMPANY_GSTIN: Optional[str] = os.getenv("COMPANY_GSTIN", None)
+    TAX_RATE_PERCENT: float = float(os.getenv("TAX_RATE_PERCENT", "18.0"))  # 18% GST (CGST 9% + SGST 9%)
     
     # Background Processing & Concurrency
     MAX_WORKER_CONCURRENCY: int = 4
@@ -63,8 +75,9 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Ensure storage directories exist
+# Ensure all critical storage directories exist
 os.makedirs(settings.STORAGE_DIR, exist_ok=True)
 os.makedirs(os.path.join(settings.STORAGE_DIR, "documents"), exist_ok=True)
 os.makedirs(os.path.join(settings.STORAGE_DIR, "temp"), exist_ok=True)
 os.makedirs(os.path.join(settings.STORAGE_DIR, "thumbnails"), exist_ok=True)
+os.makedirs(os.path.join(settings.STORAGE_DIR, "invoices"), exist_ok=True)

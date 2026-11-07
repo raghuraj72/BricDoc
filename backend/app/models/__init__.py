@@ -1,5 +1,14 @@
 from app.core.database import Base
-from app.models.user import User, Profile, Subscription, DailyUsage, PaymentMethod, PaymentOrder, PaymentTransaction
+from app.models.user import User, Profile, Subscription, DailyUsage, PaymentMethod
+from app.models.payment import (
+    PaymentOrder,
+    PaymentAttempt,
+    PaymentTransaction,
+    Invoice,
+    Refund,
+    WebhookEvent,
+    SubscriptionEvent,
+)
 from app.models.document import Document, Folder, DocumentVersion, DocumentTag, DocumentShare
 from app.models.job import ProcessingJob, JobEvent
 from app.models.workflow import Workflow, WorkflowStep, WorkflowExecution
@@ -13,6 +22,13 @@ __all__ = [
     "Subscription",
     "DailyUsage",
     "PaymentMethod",
+    "PaymentOrder",
+    "PaymentAttempt",
+    "PaymentTransaction",
+    "Invoice",
+    "Refund",
+    "WebhookEvent",
+    "SubscriptionEvent",
     "Document",
     "Folder",
     "DocumentVersion",

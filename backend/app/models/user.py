@@ -55,8 +55,8 @@ class Subscription(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
-    plan_tier = Column(String(32), default="free")  # free, pro, business
-    status = Column(String(32), default="active")   # active, cancelled, past_due
+    plan_tier = Column(String(32), default="free")  # "free", "pro", "business"
+    status = Column(String(32), default="active")   # "active", "cancelled", "past_due", "expired"
     max_storage_bytes = Column(Integer, default=500 * 1024 * 1024)  # 500 MB for Free tier
     max_file_size_mb = Column(Integer, default=25)
     ai_credits_monthly = Column(Integer, default=50)
@@ -64,8 +64,14 @@ class Subscription(Base):
     first_time_offer_used = Column(Boolean, default=False)
     auto_renew_enabled = Column(Boolean, default=True)
     payment_method_id = Column(String(36), nullable=True)
+    razorpay_subscription_id = Column(String(128), nullable=True, index=True)
+    razorpay_customer_id = Column(String(128), nullable=True)
+    current_period_start = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     current_period_end = Column(DateTime, nullable=True)
+    cancel_at_period_end = Column(Boolean, default=False)
+    cancelled_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="subscription")
 
@@ -103,37 +109,13 @@ class DailyUsage(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
-class PaymentOrder(Base):
-    __tablename__ = "payment_orders"
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    gateway = Column(String(32), default="razorpay")  # "razorpay" or "stripe"
-    gateway_order_id = Column(String(128), unique=True, index=True, nullable=False)
-    amount = Column(Integer, nullable=False)  # in smallest currency unit (e.g. 8500 = ₹85.00 INR)
-    currency = Column(String(8), default="INR")
-    plan_tier = Column(String(32), default="pro")
-    status = Column(String(32), default="created")  # "created", "paid", "failed"
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-
-
-class PaymentTransaction(Base):
-    __tablename__ = "payment_transactions"
-
-    id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    order_id = Column(String(36), nullable=True)
-    gateway = Column(String(32), default="razorpay")
-    gateway_payment_id = Column(String(128), unique=True, index=True, nullable=False)
-    amount = Column(Integer, nullable=False)
-    currency = Column(String(8), default="INR")
-    method = Column(String(32), nullable=True)  # "upi", "card", "netbanking"
-    vpa = Column(String(128), nullable=True)
-    card_network = Column(String(32), nullable=True)
-    card_last4 = Column(String(4), nullable=True)
-    status = Column(String(32), default="captured")
-    signature = Column(String(256), nullable=True)
-    verified_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-
+# Re-export payment models for backwards-compatibility
+from app.models.payment import (
+    PaymentOrder,
+    PaymentAttempt,
+    PaymentTransaction,
+    Invoice,
+    Refund,
+    WebhookEvent,
+    SubscriptionEvent
+)

@@ -145,6 +145,12 @@ export function Navbar() {
           {isAuthenticated ? (
             <div className="flex items-center gap-2">
               <Link
+                href="/settings/billing"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <span>Billing</span>
+              </Link>
+              <Link
                 href="/dashboard"
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 hover:bg-brand-100 rounded-lg transition-colors border border-brand-200 dark:border-brand-900"
               >

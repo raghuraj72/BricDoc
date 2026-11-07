@@ -1,4 +1,5 @@
 import logging
+import shutil
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -6,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.core.database import engine, Base
 from app.api.v1.api import api_router
+from app.api.v1.endpoints import payments, subscription
 import app.models  # Ensure all models are registered
 
 # Configure logging
@@ -46,9 +48,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Mount API V1 routes
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# Direct aliases for standard API patterns
+app.include_router(payments.router, prefix="/api/payments", tags=["Payment Aliases"])
+app.include_router(subscription.router, prefix="/api/subscriptions", tags=["Subscription Aliases"])
+
 @app.get("/health")
 def root_health():
-    import shutil
     total, used, free = shutil.disk_usage(settings.STORAGE_DIR)
     return {
         "status": "healthy",
@@ -67,4 +72,3 @@ def root():
         "docs": f"{settings.API_V1_STR}/docs",
         "health": "/health"
     }
-

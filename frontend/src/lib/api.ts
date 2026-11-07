@@ -380,81 +380,75 @@ class ApiClient {
     });
   }
 
-  async upgradeSubscription(planTier: string = "pro", promoCode?: string): Promise<{
-    success: boolean;
-    message: string;
-    plan_tier: string;
-  }> {
-    return this.request("/subscription/upgrade", {
-      method: "POST",
-      body: JSON.stringify({ plan_tier: planTier, promo_code: promoCode }),
-    });
+  // Subscription & Payment Gateway Endpoints
+  async getCurrentSubscription(): Promise<any> {
+    return this.request("/subscription/current");
   }
 
-  async setupPaymentMethod(data: {
-    payment_type: "card" | "upi";
-    card_number?: string;
-    exp_month?: string;
-    exp_year?: string;
-    cvv?: string;
-    cardholder_name?: string;
-    upi_vpa?: string;
-    plan_tier?: string;
-    promo_applied?: boolean;
-  }): Promise<{
+  async cancelSubscription(data: { cancel_at_period_end?: boolean; reason?: string } = {}): Promise<{
     success: boolean;
     message: string;
-    payment_method?: any;
-    subscription?: any;
+    cancel_at_period_end: boolean;
   }> {
-    return this.request("/subscription/setup-payment-method", {
+    return this.request("/subscription/cancel", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
-  async getPaymentMethod(): Promise<{
-    has_payment_method: boolean;
-    payment_method: any;
-    subscription: any;
-  }> {
-    return this.request("/subscription/payment-method");
-  }
-
-  async cancelAutoRenew(): Promise<{
+  async reactivateSubscription(): Promise<{
     success: boolean;
     message: string;
-    auto_renew_enabled: boolean;
   }> {
-    return this.request("/subscription/cancel-auto-renew", {
+    return this.request("/subscription/reactivate", {
       method: "POST",
+    });
+  }
+
+  async getPaymentMethod(): Promise<any> {
+    return this.request("/subscription/current");
+  }
+
+  async cancelAutoRenew(): Promise<any> {
+    return this.request("/subscription/cancel", {
+      method: "POST",
+      body: JSON.stringify({ cancel_at_period_end: true }),
     });
   }
 
   // Real Payment Gateway Endpoints
   async getPaymentConfig(): Promise<{
     gateway: string;
-    razorpay_key_id: string;
-    stripe_public_key?: string;
-    is_test_mode: boolean;
-    pricing: {
-      intro_usd: number;
-      intro_inr: number;
-      intro_paise: number;
-      renewal_usd: number;
-      renewal_inr: number;
-      currency: string;
+    is_configured: boolean;
+    razorpay_key_id: string | null;
+    mode: string;
+    pricing_catalog: {
+      free: any;
+      pro: any;
+      business: any;
+      tax_rate_percent: number;
     };
     supported_methods: string[];
+    user_subscription?: any;
   }> {
     return this.request("/payments/config");
   }
 
-  async createPaymentOrder(data: { plan?: string; currency?: string } = {}): Promise<{
+  async createPaymentOrder(data: {
+    plan?: string;
+    currency?: string;
+    billing_name?: string;
+    billing_email?: string;
+  } = {}): Promise<{
     success: boolean;
     order_id: string;
     amount: number;
     currency: string;
+    amount_inr: number;
+    subtotal_inr: number;
+    tax_inr: number;
+    tax_rate: number;
+    is_intro_promo: boolean;
     key_id: string;
     name: string;
     description: string;
@@ -476,15 +470,17 @@ class ApiClient {
     razorpay_order_id: string;
     razorpay_payment_id: string;
     razorpay_signature: string;
-    method?: string;
-    vpa?: string;
-    card_network?: string;
-    card_last4?: string;
+    billing_name?: string;
+    billing_email?: string;
+    billing_address?: string;
   }): Promise<{
     success: boolean;
     message: string;
     plan_tier: string;
     payment_id: string;
+    order_id: string;
+    invoice_id?: string;
+    invoice_number?: string;
     current_period_end: string;
   }> {
     return this.request("/payments/verify", {
@@ -493,39 +489,59 @@ class ApiClient {
     });
   }
 
-  async processCardOtp(data: {
-    order_id: string;
-    card_number: string;
-    exp_month: string;
-    exp_year: string;
-    cvv: string;
-    cardholder_name?: string;
-    otp: string;
-  }): Promise<{
-    success: boolean;
-    message: string;
-    plan_tier: string;
-    payment_id: string;
-    current_period_end: string;
-  }> {
-    return this.request("/payments/process-card-otp", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
+  async getPaymentStatus(orderId: string): Promise<any> {
+    return this.request(`/payments/status/${orderId}`);
   }
 
-  async processUpiPayment(data: {
-    order_id: string;
-    vpa: string;
-    app_name?: string;
+  async getPaymentHistory(): Promise<{
+    total: number;
+    transactions: Array<{
+      id: string;
+      payment_id: string;
+      amount_paise: number;
+      amount_inr: number;
+      currency: string;
+      method: string;
+      status: string;
+      invoice_id?: string;
+      invoice_number?: string;
+      created_at: string;
+    }>;
+  }> {
+    return this.request("/payments/history");
+  }
+
+  async getInvoices(): Promise<{
+    total: number;
+    invoices: Array<{
+      id: string;
+      invoice_number: string;
+      plan_tier: string;
+      amount_subtotal_inr: number;
+      tax_amount_inr: number;
+      amount_total_inr: number;
+      currency: string;
+      status: string;
+      issued_at: string;
+      download_url: string;
+    }>;
+  }> {
+    return this.request("/payments/invoices");
+  }
+
+  async requestRefund(data: {
+    transaction_id: string;
+    reason?: string;
+    amount_paise?: number;
   }): Promise<{
     success: boolean;
+    refund_id: string;
+    gateway_refund_id?: string;
+    amount_inr: number;
+    status: string;
     message: string;
-    plan_tier: string;
-    payment_id: string;
-    current_period_end: string;
   }> {
-    return this.request("/payments/process-upi", {
+    return this.request("/payments/refund", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -534,11 +550,12 @@ class ApiClient {
   async setPaymentKeys(data: {
     razorpay_key_id: string;
     razorpay_key_secret: string;
+    razorpay_webhook_secret?: string;
   }): Promise<{
     success: boolean;
     message: string;
     key_id: string;
-    is_test_mode: boolean;
+    mode: string;
   }> {
     return this.request("/payments/set-keys", {
       method: "POST",
