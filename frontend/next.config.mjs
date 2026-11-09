@@ -8,11 +8,17 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   async rewrites() {
-    const rawBackendUrl = (
+    let rawBackendUrl = (
       process.env.BACKEND_INTERNAL_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
       'http://127.0.0.1:8005'
     ).trim();
+
+    // Support Render private service hostname (e.g. "bricdoc-api" or "bricdoc-api:10000")
+    if (rawBackendUrl && !rawBackendUrl.startsWith('http://') && !rawBackendUrl.startsWith('https://')) {
+      rawBackendUrl = `http://${rawBackendUrl}`;
+    }
+
     const backendUrl = rawBackendUrl.replace(/\/api\/v1\/?$/, '').replace(/\/+$/, '').trim();
     return [
       {

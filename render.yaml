@@ -1,4 +1,7 @@
 services:
+  # ============================================================================
+  # SERVICE 1: BRICDOC BACKEND API
+  # ============================================================================
   - type: web
     name: bricdoc-api
     runtime: docker
@@ -8,18 +11,29 @@ services:
     region: oregon
     healthCheckPath: /health
     disk:
-      name: bricdoc-vault
+      name: bricdoc-vault-api
       mountPath: /app/vault_storage
       sizeGB: 10
     envVars:
       - key: ENVIRONMENT
         value: production
+      - key: PORT
+        value: 10000
       - key: SECRET_KEY
         generateValue: true
       - key: CORS_ORIGINS
         value: https://bricdoc-raghuraj.vercel.app,https://bricdoc.in,https://bricdoc.vercel.app
       - key: APP_URL
         value: https://bricdoc-raghuraj.vercel.app
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bricdoc-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: bricdoc-redis
+          property: connectionString
       - key: GEMINI_API_KEY
         sync: false
       - key: RAZORPAY_KEY_ID
@@ -28,5 +42,100 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
-      - key: DATABASE_URL
+      - key: R2_ACCOUNT_ID
         sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+
+  # ============================================================================
+  # SERVICE 2: BRICDOC PDF BACKGROUND WORKER
+  # ============================================================================
+  - type: worker
+    name: bricdoc-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    dockerCommand: python -m app.worker
+    plan: starter
+    region: oregon
+    disk:
+      name: bricdoc-vault-worker
+      mountPath: /app/vault_storage
+      sizeGB: 10
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: bricdoc-api
+          envVarKey: SECRET_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bricdoc-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: bricdoc-redis
+          property: connectionString
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+
+  # ============================================================================
+  # SERVICE 3: BRICDOC FRONTEND (NEXT.JS)
+  # ============================================================================
+  - type: web
+    name: bricdoc-frontend
+    runtime: node
+    rootDir: frontend
+    plan: starter
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BACKEND_INTERNAL_URL
+        fromService:
+          type: web
+          name: bricdoc-api
+          property: host
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: bricdoc-api
+          property: host
+
+# ==============================================================================
+# MANAGED DATABASE: POSTGRESQL 16
+# ==============================================================================
+databases:
+  - name: bricdoc-db
+    databaseName: bricdoc
+    user: bricdoc_user
+    plan: starter
+    region: oregon
+    postgresMajorVersion: 16
+
+# ==============================================================================
+# KEY VALUE / REDIS INSTANCE
+# ==============================================================================
+keyvalues:
+  - name: bricdoc-redis
+    plan: starter
+    region: oregon
+    ipAllowList: []

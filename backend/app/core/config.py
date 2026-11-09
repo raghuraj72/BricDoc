@@ -38,9 +38,19 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/bricdoc.db")
     
-    # File Storage
+    # Redis / Key-Value Cache & Queue
+    REDIS_URL: Optional[str] = os.getenv("REDIS_URL", None)
+    
+    # File Storage (Local disk or S3/Cloudflare R2 Object Storage)
     STORAGE_DIR: str = os.getenv("STORAGE_DIR", str(BASE_DIR / "vault_storage"))
     MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))
+    
+    # Cloudflare R2 / AWS S3 Object Storage Credentials (Optional, persistent disk used if not set)
+    R2_ACCOUNT_ID: Optional[str] = os.getenv("R2_ACCOUNT_ID", None)
+    R2_ACCESS_KEY_ID: Optional[str] = os.getenv("R2_ACCESS_KEY_ID", None)
+    R2_SECRET_ACCESS_KEY: Optional[str] = os.getenv("R2_SECRET_ACCESS_KEY", None)
+    R2_BUCKET_NAME: Optional[str] = os.getenv("R2_BUCKET_NAME", None)
+    R2_ENDPOINT_URL: Optional[str] = os.getenv("R2_ENDPOINT_URL", None)
     
     # AI Provider (Google Gemini)
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY", None)

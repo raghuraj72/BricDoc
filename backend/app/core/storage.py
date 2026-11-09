@@ -77,7 +77,54 @@ class VaultStorage:
                 
         # Return relative storage key, original name, size, sha256
         rel_storage_path = f"documents/{user_id}/{storage_filename}"
+
+        # If Cloudflare R2 / S3 object storage is configured, sync to bucket
+        self._upload_to_object_storage(target_path, rel_storage_path)
+
         return rel_storage_path, sanitized_original, total_size, hasher.hexdigest()
+
+    def _get_s3_client(self):
+        """Initializes S3 client for Cloudflare R2 or AWS S3 if credentials exist."""
+        if not (settings.R2_BUCKET_NAME and settings.R2_ACCESS_KEY_ID and settings.R2_SECRET_ACCESS_KEY):
+            return None
+        try:
+            import boto3
+            from botocore.config import Config
+            endpoint = settings.R2_ENDPOINT_URL
+            if not endpoint and settings.R2_ACCOUNT_ID:
+                endpoint = f"https://{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+            return boto3.client(
+                "s3",
+                endpoint_url=endpoint,
+                aws_access_key_id=settings.R2_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
+                config=Config(signature_version="s3v4")
+            )
+        except Exception:
+            return None
+
+    def _upload_to_object_storage(self, local_path: Path, storage_key: str):
+        """Asynchronously or synchronously uploads binary to S3/R2."""
+        s3 = self._get_s3_client()
+        if s3:
+            try:
+                s3.upload_file(str(local_path), settings.R2_BUCKET_NAME, storage_key)
+            except Exception:
+                pass
+
+    def generate_signed_download_url(self, storage_key: str, expires_in_seconds: int = 3600) -> Optional[str]:
+        """Generates a secure presigned download URL for R2 / S3 object storage."""
+        s3 = self._get_s3_client()
+        if not s3 or not settings.R2_BUCKET_NAME:
+            return None
+        try:
+            return s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": settings.R2_BUCKET_NAME, "Key": storage_key},
+                ExpiresIn=expires_in_seconds
+            )
+        except Exception:
+            return None
 
     def save_bytes(self, user_id: str, data: bytes, filename: str) -> Tuple[str, str, int, str]:
         """Saves generated binary data (e.g. processed PDF) into user's private storage."""
@@ -94,6 +141,8 @@ class VaultStorage:
         file_size = len(data)
         file_hash = hashlib.sha256(data).hexdigest()
         rel_storage_path = f"documents/{user_id}/{storage_filename}"
+        
+        self._upload_to_object_storage(target_path, rel_storage_path)
         return rel_storage_path, sanitized_original, file_size, file_hash
 
     def get_absolute_path(self, storage_path: str) -> Path:
@@ -114,7 +163,15 @@ class VaultStorage:
         return resolved
 
     def delete_file(self, storage_path: str) -> bool:
-        """Safely delete file from storage."""
+        """Safely delete file from storage and object storage."""
+        # Delete from S3/R2
+        s3 = self._get_s3_client()
+        if s3 and settings.R2_BUCKET_NAME:
+            try:
+                s3.delete_object(Bucket=settings.R2_BUCKET_NAME, Key=storage_path)
+            except Exception:
+                pass
+
         try:
             abs_path = self.get_absolute_path(storage_path)
             if abs_path.is_file():

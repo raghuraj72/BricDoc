@@ -30,7 +30,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
-    allow_origin_regex=r"^https://(.*\.vercel\.app|.*\.bricdoc\.in|bricdoc\.in)$",
+    allow_origin_regex=r"^https://(.*\.vercel\.app|.*\.bricdoc\.in|bricdoc\.in|.*\.onrender\.com)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,16 +54,8 @@ app.include_router(subscription.router, prefix="/api/subscriptions", tags=["Subs
 
 @app.get("/health")
 def root_health():
-    total, used, free = shutil.disk_usage(settings.STORAGE_DIR)
-    return {
-        "status": "healthy",
-        "service": "BricDoc API",
-        "version": settings.VERSION,
-        "storage": {
-            "total_gb": round(total / (1024**3), 2),
-            "free_gb": round(free / (1024**3), 2)
-        }
-    }
+    from app.api.v1.api import api_v1_health
+    return api_v1_health()
 
 @app.get("/")
 def root():
