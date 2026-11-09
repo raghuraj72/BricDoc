@@ -113,12 +113,21 @@ services:
         fromService:
           type: web
           name: bricdoc-api
-          property: host
+          property: hostport
       - key: NEXT_PUBLIC_API_URL
         fromService:
           type: web
           name: bricdoc-api
-          property: host
+          property: hostport
+
+  # ============================================================================
+  # SERVICE 4: KEY VALUE / REDIS INSTANCE
+  # ============================================================================
+  - type: keyvalue
+    name: bricdoc-redis
+    plan: starter
+    region: oregon
+    ipAllowList: []
 
 # ==============================================================================
 # MANAGED DATABASE: POSTGRESQL 16
@@ -130,12 +139,3 @@ databases:
     plan: starter
     region: oregon
     postgresMajorVersion: 16
-
-# ==============================================================================
-# KEY VALUE / REDIS INSTANCE
-# ==============================================================================
-keyvalues:
-  - name: bricdoc-redis
-    plan: starter
-    region: oregon
-    ipAllowList: []
