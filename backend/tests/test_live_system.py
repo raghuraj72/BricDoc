@@ -60,6 +60,18 @@ def test_system():
     assert r.status_code == 200 and r.json()["full_name"] == "Updated User"
     print("  [PASS] User Profile Update: OK")
 
+    # Upgrade test user to Pro tier to test unlimited processing capabilities
+    from app.core.database import SessionLocal
+    from app.models.user import User as UserModel
+    db_test = SessionLocal()
+    u_record = db_test.query(UserModel).filter(UserModel.email == test_email).first()
+    if u_record and u_record.subscription:
+        u_record.subscription.plan_tier = "pro"
+        u_record.subscription.status = "active"
+        db_test.commit()
+    db_test.close()
+    print("  [PASS] User Upgraded to Pro Tier: OK")
+
     # 3. Private Vault & Document Management
     print("\n[3/7] Testing Document Vault & Sharing...")
     pdf_bytes = create_sample_pdf()
@@ -101,7 +113,7 @@ def test_system():
     # Merge
     p1 = create_sample_pdf("Page 1")
     p2 = create_sample_pdf("Page 2")
-    r = requests.post(f"{API_URL}/tools/merge", files=[
+    r = requests.post(f"{API_URL}/tools/merge", headers=headers, files=[
         ("files", ("p1.pdf", p1, "application/pdf")),
         ("files", ("p2.pdf", p2, "application/pdf"))
     ])
@@ -110,45 +122,45 @@ def test_system():
     print("  [PASS] Merge PDF: OK (output:", len(merged_pdf), "bytes)")
 
     # Split
-    r = requests.post(f"{API_URL}/tools/split", files={"file": ("merged.pdf", merged_pdf, "application/pdf")}, data={"ranges": "1"})
+    r = requests.post(f"{API_URL}/tools/split", headers=headers, files={"file": ("merged.pdf", merged_pdf, "application/pdf")}, data={"ranges": "1"})
     assert r.status_code == 200
     print("  [PASS] Split PDF (ranges): OK")
 
     # Rotate
-    r = requests.post(f"{API_URL}/tools/rotate", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"angle": "90"})
+    r = requests.post(f"{API_URL}/tools/rotate", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"angle": "90"})
     assert r.status_code == 200
     print("  [PASS] Rotate PDF: OK")
 
     # Page Numbers
-    r = requests.post(f"{API_URL}/tools/page-numbers", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"position": "bottom-center"})
+    r = requests.post(f"{API_URL}/tools/page-numbers", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"position": "bottom-center"})
     assert r.status_code == 200
     print("  [PASS] Page Numbers: OK")
 
     # Compress
-    r = requests.post(f"{API_URL}/tools/compress", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"level": "recommended"})
+    r = requests.post(f"{API_URL}/tools/compress", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"level": "recommended"})
     assert r.status_code == 200
     print("  [PASS] Compress PDF: OK")
 
     # Protect (AES-256)
-    r = requests.post(f"{API_URL}/tools/protect", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"password": "TestPassword123!"})
+    r = requests.post(f"{API_URL}/tools/protect", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"password": "TestPassword123!"})
     assert r.status_code == 200
     enc_pdf = r.content
     print("  [PASS] Protect PDF (AES-256): OK")
 
     # Unlock
-    r = requests.post(f"{API_URL}/tools/unlock", files={"file": ("enc.pdf", enc_pdf, "application/pdf")}, data={"password": "TestPassword123!"})
+    r = requests.post(f"{API_URL}/tools/unlock", headers=headers, files={"file": ("enc.pdf", enc_pdf, "application/pdf")}, data={"password": "TestPassword123!"})
     assert r.status_code == 200
     print("  [PASS] Unlock PDF: OK")
 
     # Watermark
-    r = requests.post(f"{API_URL}/tools/watermark", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"text": "CONFIDENTIAL", "opacity": "0.3"})
+    r = requests.post(f"{API_URL}/tools/watermark", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"text": "CONFIDENTIAL", "opacity": "0.3"})
     assert r.status_code == 200
     print("  [PASS] Watermark PDF: OK")
 
     # Redact
     import json
     redactions = json.dumps([{"page_number": 1, "x": 50, "y": 50, "width": 100, "height": 30}])
-    r = requests.post(f"{API_URL}/tools/redact", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"redactions_json": redactions})
+    r = requests.post(f"{API_URL}/tools/redact", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"redactions_json": redactions})
     assert r.status_code == 200
     print("  [PASS] Redact PDF: OK")
 
@@ -167,12 +179,12 @@ def test_system():
         doc.save(s)
         docx_data = s.getvalue()
 
-    r = requests.post(f"{API_URL}/tools/convert/docx-to-pdf", files={"file": ("report.docx", docx_data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")})
+    r = requests.post(f"{API_URL}/tools/convert/docx-to-pdf", headers=headers, files={"file": ("report.docx", docx_data, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")})
     assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
     print("  [PASS] Word to PDF: OK (output:", len(r.content), "bytes)")
 
     # PDF to Images
-    r = requests.post(f"{API_URL}/tools/convert/pdf-to-images", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"format": "png"})
+    r = requests.post(f"{API_URL}/tools/convert/pdf-to-images", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"format": "png"})
     assert r.status_code == 200 and "application/zip" in r.headers["content-type"]
     print("  [PASS] PDF to Images: OK")
 
@@ -180,27 +192,27 @@ def test_system():
     img = Image.new("RGB", (200, 200), color="blue")
     img_io = io.BytesIO()
     img.save(img_io, format="PNG")
-    r = requests.post(f"{API_URL}/tools/convert/images-to-pdf", files=[("files", ("test.png", img_io.getvalue(), "image/png"))])
+    r = requests.post(f"{API_URL}/tools/convert/images-to-pdf", headers=headers, files=[("files", ("test.png", img_io.getvalue(), "image/png"))])
     assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
     print("  [PASS] Images to PDF: OK")
 
     # Text to PDF
-    r = requests.post(f"{API_URL}/tools/convert/text-to-pdf", files={"file": ("notes.txt", b"Hello from BricDoc plain text conversion!", "text/plain")})
+    r = requests.post(f"{API_URL}/tools/convert/text-to-pdf", headers=headers, files={"file": ("notes.txt", b"Hello from BricDoc plain text conversion!", "text/plain")})
     assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
     print("  [PASS] Text to PDF: OK")
 
     # PDF to Markdown
-    r = requests.post(f"{API_URL}/tools/convert/pdf-to-markdown", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")})
+    r = requests.post(f"{API_URL}/tools/convert/pdf-to-markdown", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")})
     assert r.status_code == 200
     print("  [PASS] PDF to Markdown: OK")
 
     # 6. AI Intelligence & Workflows
     print("\n[6/7] Testing AI Intelligence & Multi-Step Workflows...")
-    r = requests.post(f"{API_URL}/ai/summarize", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")})
+    r = requests.post(f"{API_URL}/ai/summarize", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")})
     assert r.status_code == 200 and "summary" in r.json()
     print("  [PASS] AI Summarize: OK (provider:", r.json().get("provider"), ")")
 
-    r = requests.post(f"{API_URL}/ai/chat", files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"message": "What is in this document?"})
+    r = requests.post(f"{API_URL}/ai/chat", headers=headers, files={"file": ("doc.pdf", pdf_bytes, "application/pdf")}, data={"message": "What is in this document?"})
     assert r.status_code == 200 and "answer" in r.json()
     print("  [PASS] AI Chat: OK")
 
