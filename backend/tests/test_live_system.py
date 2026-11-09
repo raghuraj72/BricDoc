@@ -6,8 +6,9 @@ from pypdf import PdfWriter, PdfReader
 from docx import Document as DocxDocument
 from PIL import Image
 
-API_URL = "http://127.0.0.1:8005/api/v1"
-HEALTH_URL = "http://127.0.0.1:8005/health"
+BASE_TARGET_URL = os.environ.get("BASE_TARGET_URL", "http://127.0.0.1:8005").rstrip("/")
+API_URL = os.environ.get("API_URL", f"{BASE_TARGET_URL}/api/v1")
+HEALTH_URL = os.environ.get("HEALTH_URL", f"{BASE_TARGET_URL}/health")
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://bricdoc-raghuraj.vercel.app")
 
 def create_sample_pdf(text="Hello BricDoc Test PDF"):

@@ -4,16 +4,29 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: free
+    plan: starter
     region: oregon
+    healthCheckPath: /health
+    disk:
+      name: bricdoc-vault
+      mountPath: /app/vault_storage
+      sizeGB: 10
     envVars:
-      - key: PORT
-        value: 8000
       - key: ENVIRONMENT
         value: production
       - key: SECRET_KEY
         generateValue: true
       - key: CORS_ORIGINS
-        value: https://bricdoc.vercel.app
+        value: https://bricdoc-raghuraj.vercel.app,https://bricdoc.in,https://bricdoc.vercel.app
+      - key: APP_URL
+        value: https://bricdoc-raghuraj.vercel.app
       - key: GEMINI_API_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: DATABASE_URL
         sync: false
