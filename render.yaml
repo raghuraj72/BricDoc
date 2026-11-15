@@ -1,19 +1,16 @@
 services:
   # ============================================================================
-  # SERVICE 1: BRICDOC BACKEND API
+  # BRICDOC ALL-IN-ONE BACKEND & IN-PROCESS WORKER (FREE TIER)
+  # Zero-cost hosting on Render Free Web Service with external serverless Postgres
   # ============================================================================
   - type: web
     name: bricdoc-api
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
-    plan: starter
+    plan: free
     region: oregon
     healthCheckPath: /health
-    disk:
-      name: bricdoc-vault-api
-      mountPath: /app/vault_storage
-      sizeGB: 10
     envVars:
       - key: ENVIRONMENT
         value: production
@@ -26,116 +23,30 @@ services:
       - key: APP_URL
         value: https://bricdoc-raghuraj.vercel.app
       - key: DATABASE_URL
-        fromDatabase:
-          name: bricdoc-db
-          property: connectionString
+        sync: false
       - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: bricdoc-redis
-          property: connectionString
+        value: ""
+      - key: STORAGE_DIR
+        value: /tmp/vault_storage
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "25"
+      - key: MAX_CONCURRENT_JOBS
+        value: "1"
+      - key: ENABLE_INPROCESS_WORKER
+        value: "true"
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
-      - key: RAZORPAY_WEBHOOK_SECRET
-        sync: false
-      - key: R2_ACCOUNT_ID
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_BUCKET_NAME
-        sync: false
-
-  # ============================================================================
-  # SERVICE 2: BRICDOC PDF BACKGROUND WORKER
-  # ============================================================================
-  - type: worker
-    name: bricdoc-worker
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: .
-    dockerCommand: python -m app.worker
-    plan: starter
-    region: oregon
-    disk:
-      name: bricdoc-vault-worker
-      mountPath: /app/vault_storage
-      sizeGB: 10
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: SECRET_KEY
-        fromService:
-          type: web
-          name: bricdoc-api
-          envVarKey: SECRET_KEY
-      - key: DATABASE_URL
-        fromDatabase:
-          name: bricdoc-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: bricdoc-redis
-          property: connectionString
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: R2_ACCOUNT_ID
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_BUCKET_NAME
-        sync: false
-
-  # ============================================================================
-  # SERVICE 3: BRICDOC FRONTEND (NEXT.JS)
-  # ============================================================================
-  - type: web
-    name: bricdoc-frontend
-    runtime: node
-    rootDir: frontend
-    plan: starter
-    region: oregon
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
-    healthCheckPath: /
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: BACKEND_INTERNAL_URL
-        fromService:
-          type: web
-          name: bricdoc-api
-          property: hostport
-      - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: bricdoc-api
-          property: hostport
-
-  # ============================================================================
-  # SERVICE 4: KEY VALUE / REDIS INSTANCE
-  # ============================================================================
-  - type: keyvalue
-    name: bricdoc-redis
-    plan: starter
-    region: oregon
-    ipAllowList: []
-
-# ==============================================================================
-# MANAGED DATABASE: POSTGRESQL 16
-# ==============================================================================
-databases:
-  - name: bricdoc-db
-    databaseName: bricdoc
-    user: bricdoc_user
-    plan: starter
-    region: oregon
-    postgresMajorVersion: 16
+      - key: RAZORPAY_MODE
+        value: test

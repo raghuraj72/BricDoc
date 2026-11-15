@@ -41,15 +41,20 @@ class Settings(BaseSettings):
         if origin.strip()
     ]
     
-    # Database
+    # Database (SQLite in local dev, Neon/Supabase PostgreSQL in production)
     DATABASE_URL: str = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/bricdoc.db")
     
-    # Redis / Key-Value Cache & Queue
+    # Redis / Key-Value Cache & Queue (Optional; if unset, database-backed queue is used)
     REDIS_URL: Optional[str] = os.getenv("REDIS_URL", None)
     
-    # File Storage (Local disk or S3/Cloudflare R2 Object Storage)
-    STORAGE_DIR: str = os.getenv("STORAGE_DIR", str(BASE_DIR / "vault_storage"))
-    MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))
+    # File Storage (Local ephemeral scratchpad or S3/Cloudflare R2 Object Storage)
+    STORAGE_DIR: str = os.getenv(
+        "STORAGE_DIR",
+        "/tmp/vault_storage" if (os.name != "nt" and os.getenv("ENVIRONMENT", "").lower() == "production") else str(BASE_DIR / "vault_storage")
+    )
+    MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "25"))
+    MAX_CONCURRENT_JOBS: int = int(os.getenv("MAX_CONCURRENT_JOBS", "1"))
+    ENABLE_INPROCESS_WORKER: bool = os.getenv("ENABLE_INPROCESS_WORKER", "true").lower() in ("true", "1", "yes")
     
     # Cloudflare R2 / AWS S3 Object Storage Credentials
     R2_ACCOUNT_ID: Optional[str] = os.getenv("R2_ACCOUNT_ID", None)
@@ -98,7 +103,7 @@ class Settings(BaseSettings):
     TAX_RATE_PERCENT: float = float(os.getenv("TAX_RATE_PERCENT", "18.0"))  # 18% GST (CGST 9% + SGST 9%)
     
     # Background Processing & Concurrency
-    MAX_WORKER_CONCURRENCY: int = 4
+    MAX_WORKER_CONCURRENCY: int = 1
     JOB_TIMEOUT_SECONDS: int = 300
     
     model_config = SettingsConfigDict(

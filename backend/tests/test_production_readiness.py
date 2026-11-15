@@ -14,7 +14,7 @@ from app.models.user import User
 from app.models.job import ProcessingJob, JobEvent
 from app.services.job_queue import JobQueue
 from app.services.pdf_security import PDFSecurity
-from app.worker import PDFWorker
+from app.worker import PDFWorker, _claim_and_execute_sync
 
 
 @pytest.fixture
@@ -76,6 +76,19 @@ def test_storage_save_and_retrieve_bytes():
     # Clean up
     deleted = storage.delete_file(rel_path)
     assert deleted is True
+
+
+def test_storage_cleanup_local_file():
+    """Verify ephemeral local cache pruning preserves storage safety."""
+    user_id = str(uuid.uuid4())
+    rel_path, _, _, _ = storage.save_bytes(user_id, b"%PDF-1.4 test ephemeral prune", "temp.pdf")
+    abs_path = storage.base_dir / rel_path
+    assert abs_path.is_file()
+
+    # Prune local copy
+    pruned = storage.cleanup_local_file(rel_path)
+    assert pruned is True
+    assert not abs_path.exists()
 
 
 def test_storage_r2_cache_miss_download():
@@ -189,6 +202,30 @@ def test_job_queue_and_worker_protect_unlock(db_session, test_user, sample_pdf_b
     storage.delete_file(rel_path)
     storage.delete_file(claimed_job.output_storage_path)
     storage.delete_file(claimed_unlock.output_storage_path)
+
+
+def test_inprocess_worker_execution(db_session, test_user, sample_pdf_bytes):
+    """Verify in-process worker helper processes a queued job cleanly from database without Redis."""
+    rel_path, _, _, _ = storage.save_bytes(test_user.id, sample_pdf_bytes, "doc.pdf")
+
+    job = JobQueue.enqueue_job(
+        db=db_session,
+        user_id=test_user.id,
+        tool_name="compress",
+        input_file_name=rel_path,
+        parameters={"level": "recommended"}
+    )
+    assert job.status == "queued"
+
+    worker = PDFWorker()
+    executed = _claim_and_execute_sync(worker, db_session)
+    assert executed is True
+
+    db_session.refresh(job)
+    assert job.status == "completed"
+    assert job.output_storage_path is not None
+    storage.delete_file(rel_path)
+    storage.delete_file(job.output_storage_path)
 
 
 def test_worker_fails_on_missing_input_file(db_session, test_user):

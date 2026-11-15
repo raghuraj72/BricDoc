@@ -1,8 +1,8 @@
 """
 BricDoc Production Background PDF Worker Service.
 Processes asynchronous and long-running PDF transformation jobs from Redis / Database queues.
-Runs continuously as an independent background worker with health heartbeats, atomic job claiming,
-multi-service storage synchronization via Cloudflare R2, and graceful shutdown.
+Supports standalone process execution (python -m app.worker) and in-process async worker execution
+within the FastAPI application event loop for zero-cost hosting architectures.
 """
 
 import os
@@ -11,6 +11,8 @@ import time
 import json
 import signal
 import logging
+import asyncio
+import gc
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -31,18 +33,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger("bricdoc.worker")
 
-# Global graceful shutdown flag
+# Global graceful shutdown flags
 RUNNING = True
+INPROCESS_WORKER_RUNNING = False
 
 
 def signal_handler(signum, frame):
-    global RUNNING
+    global RUNNING, INPROCESS_WORKER_RUNNING
     logger.info(f"Received termination signal ({signum}). Initiating graceful shutdown...")
     RUNNING = False
+    INPROCESS_WORKER_RUNNING = False
 
 
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
+# Register signal handlers if in main thread
+try:
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+except (ValueError, AttributeError):
+    pass  # Not in main thread
 
 
 class PDFWorker:
@@ -275,7 +283,6 @@ class PDFWorker:
             elif tool == "protect":
                 if not input_bytes:
                     raise ValueError("Input PDF is required for encryption.")
-                # Extract user password securely without logging it
                 user_pwd = params.get("password") or params.get("user_password")
                 if not user_pwd:
                     raise ValueError("A password must be provided to protect this document.")
@@ -414,6 +421,10 @@ class PDFWorker:
             db.commit()
             logger.info(f"Job {job.id} completed successfully (output: {job.output_file_name}, size: {size} bytes).")
 
+            # Prune ephemeral scratchpad file if R2 is configured to preserve memory/disk
+            if settings.is_production and settings.r2_configured and job.input_file_name:
+                storage.cleanup_local_file(job.input_file_name)
+
         except Exception as e:
             logger.error(f"Job {job.id} failed: {e}", exc_info=True)
             job.status = "failed"
@@ -421,10 +432,12 @@ class PDFWorker:
             job.error_code = "PROCESSING_ERROR"
             db.add(JobEvent(job_id=job.id, message=f"Job failed: {str(e)}", event_type="error"))
             db.commit()
+        finally:
+            gc.collect()
 
     def run(self):
-        """Main worker execution loop."""
-        logger.info("BricDoc PDF Worker initialized and polling for jobs...")
+        """Main worker execution loop for standalone process."""
+        logger.info("BricDoc Standalone PDF Worker initialized and polling for jobs...")
         while RUNNING:
             self.emit_heartbeat()
             db = SessionLocal()
@@ -439,7 +452,53 @@ class PDFWorker:
                 time.sleep(3)
             finally:
                 db.close()
+                gc.collect()
         logger.info("Worker process terminated gracefully.")
+
+
+def _claim_and_execute_sync(worker: PDFWorker, db) -> bool:
+    """Helper executed in worker thread to prevent blocking FastAPI event loop."""
+    job = worker.fetch_next_job(db)
+    if job:
+        worker.execute_job(job, db)
+        return True
+    return False
+
+
+async def run_inprocess_worker(poll_interval: float = 2.0):
+    """
+    Asynchronous background coroutine running within the FastAPI application event loop.
+    Polls the database-backed queue and executes jobs sequentially (concurrency=1)
+    to prevent OOM on 512MB RAM free compute.
+    """
+    global INPROCESS_WORKER_RUNNING
+    INPROCESS_WORKER_RUNNING = True
+    worker = PDFWorker()
+    logger.info("BricDoc In-Process Background PDF Worker started (concurrency limit: 1).")
+
+    while INPROCESS_WORKER_RUNNING:
+        try:
+            worker.emit_heartbeat()
+            db = SessionLocal()
+            try:
+                loop = asyncio.get_running_loop()
+                executed = await loop.run_in_executor(None, _claim_and_execute_sync, worker, db)
+                if executed:
+                    gc.collect()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"In-process worker iteration error: {e}")
+
+        await asyncio.sleep(poll_interval)
+
+    logger.info("BricDoc In-Process Background PDF Worker stopped.")
+
+
+def stop_inprocess_worker():
+    """Signals in-process worker to stop."""
+    global INPROCESS_WORKER_RUNNING
+    INPROCESS_WORKER_RUNNING = False
 
 
 if __name__ == "__main__":

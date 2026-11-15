@@ -206,8 +206,7 @@ class VaultStorage:
     def ensure_local_copy(self, storage_path: str) -> Path:
         """
         Ensures a local file exists for the given storage path.
-        If missing locally (e.g. worker running in a separate container from API),
-        transparently downloads the file from Cloudflare R2 into the local cache.
+        If missing locally, transparently downloads the file from Cloudflare R2 into the local cache.
         """
         clean_path = Path(storage_path)
         resolved = (self.base_dir / clean_path).resolve()
@@ -226,9 +225,9 @@ class VaultStorage:
         # Cache Miss: Attempt to retrieve from Cloudflare R2
         s3 = self._get_s3_client()
         if s3 and settings.R2_BUCKET_NAME:
+            temp_download = resolved.with_suffix(f"{resolved.suffix}.part_{uuid.uuid4().hex[:8]}")
             try:
                 resolved.parent.mkdir(parents=True, exist_ok=True)
-                temp_download = resolved.with_suffix(f"{resolved.suffix}.part_{uuid.uuid4().hex[:8]}")
                 logger.info(f"Downloading cache-miss file from R2: {storage_path} -> {resolved}")
                 s3.download_file(settings.R2_BUCKET_NAME, storage_path, str(temp_download))
                 if temp_download.exists() and temp_download.stat().st_size > 0:
@@ -269,6 +268,22 @@ class VaultStorage:
         except Exception as e:
             logger.warning(f"Failed to generate presigned URL: {e}")
             return None
+
+    def cleanup_local_file(self, storage_path: str) -> bool:
+        """
+        Removes the local ephemeral cache copy of a file to free container disk space.
+        Safe to call on free tier because Cloudflare R2 is the authoritative source.
+        """
+        try:
+            clean_path = Path(storage_path)
+            resolved = (self.base_dir / clean_path).resolve()
+            if str(resolved).startswith(str(self.base_dir)) and resolved.is_file():
+                resolved.unlink()
+                logger.info(f"Pruned local ephemeral cache for {storage_path}.")
+                return True
+        except Exception as e:
+            logger.warning(f"Could not prune ephemeral cache for {storage_path}: {e}")
+        return False
 
     def delete_file(self, storage_path: str) -> bool:
         """Safely delete file from both Cloudflare R2 and local disk cache."""

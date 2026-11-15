@@ -1,5 +1,6 @@
 import logging
-import shutil
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -21,13 +22,39 @@ try:
 except Exception as e:
     logger.warning(f"Schema migration sync check skipped or warning: {e}")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    FastAPI Lifespan Context Manager.
+    Manages in-process background worker lifecycle for zero-paid hosting architectures.
+    """
+    worker_task = None
+    if settings.ENABLE_INPROCESS_WORKER:
+        from app.worker import run_inprocess_worker, stop_inprocess_worker
+        worker_task = asyncio.create_task(run_inprocess_worker())
+        logger.info("FastAPI Lifespan: In-process background worker task launched.")
+
+    yield
+
+    if worker_task:
+        from app.worker import stop_inprocess_worker
+        stop_inprocess_worker()
+        try:
+            await asyncio.wait_for(worker_task, timeout=5.0)
+        except Exception:
+            pass
+        logger.info("FastAPI Lifespan: In-process background worker task terminated gracefully.")
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description="Production-grade all-in-one document productivity platform API.",
     openapi_url="/openapi.json",
     docs_url=f"{settings.API_V1_STR}/docs",
-    redoc_url=f"{settings.API_V1_STR}/redoc"
+    redoc_url=f"{settings.API_V1_STR}/redoc",
+    lifespan=lifespan
 )
 
 # CORS Middleware

@@ -3,14 +3,26 @@ import pytest
 from reportlab.pdfgen import canvas
 from fastapi.testclient import TestClient
 
-from app.core.database import Base, engine
+from app.core.database import Base, engine, SessionLocal
+from app.models.user import DailyUsage
 from app.main import app
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
     Base.metadata.create_all(bind=engine)
     yield
-    # Cleanup after test session if needed
+
+@pytest.fixture(autouse=True)
+def reset_daily_usage_for_tests():
+    """Resets daily rate limiter usage for test runner to prevent 429 during tests."""
+    db = SessionLocal()
+    try:
+        db.query(DailyUsage).delete()
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 @pytest.fixture
 def client():
