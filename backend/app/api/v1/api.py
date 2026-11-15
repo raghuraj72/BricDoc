@@ -59,26 +59,40 @@ def api_v1_health():
 
     # 3. Check Redis connectivity
     redis_status = "not_configured"
+    redis_client = None
     if settings.REDIS_URL:
         try:
             import redis
-            r = redis.from_url(settings.REDIS_URL, socket_timeout=2)
-            if r.ping():
+            redis_client = redis.from_url(settings.REDIS_URL, socket_timeout=2)
+            if redis_client.ping():
                 redis_status = "connected"
             else:
                 redis_status = "degraded"
         except Exception:
             redis_status = "unavailable"
 
-    # 4. Check Background Worker heartbeat
+    # 4. Check Background Worker heartbeat (via Redis or file)
     worker_status = "standby"
-    try:
-        hb_file = Path(settings.STORAGE_DIR) / "worker_heartbeat.json"
-        if hb_file.exists():
-            hb_data = json.loads(hb_file.read_text())
-            worker_status = "active"
-    except Exception:
-        pass
+    if redis_client:
+        try:
+            hb = redis_client.get("bricdoc:worker:heartbeat")
+            if hb:
+                worker_status = "active"
+        except Exception:
+            pass
+
+    if worker_status == "standby":
+        try:
+            hb_file = Path(settings.STORAGE_DIR) / "worker_heartbeat.json"
+            if hb_file.exists():
+                hb_data = json.loads(hb_file.read_text())
+                worker_status = "active"
+        except Exception:
+            pass
+
+    # 5. Check Cloudflare R2 / Object Storage
+    from app.core.storage import storage
+    r2_health = storage.check_health().get("r2_connection", "disabled")
 
     overall_status = "healthy" if db_status == "connected" and storage_status == "accessible" else "degraded"
 
@@ -86,10 +100,12 @@ def api_v1_health():
         "status": overall_status,
         "service": "BricDoc API",
         "version": settings.VERSION,
+        "environment": settings.ENVIRONMENT,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "components": {
             "database": db_status,
             "storage": storage_status,
+            "r2_storage": r2_health,
             "redis": redis_status,
             "worker": worker_status
         },

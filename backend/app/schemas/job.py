@@ -16,6 +16,7 @@ class JobOut(BaseModel):
     status: str
     progress_percentage: int
     input_file_name: Optional[str]
+    parameters: Optional[str] = None
     output_file_name: Optional[str]
     output_size_bytes: Optional[int]
     error_message: Optional[str]

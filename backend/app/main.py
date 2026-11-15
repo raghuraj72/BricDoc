@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, sync_schema_migrations
 from app.api.v1.api import api_router
 from app.api.v1.endpoints import payments, subscription
 import app.models  # Ensure all models are registered
@@ -14,8 +14,12 @@ import app.models  # Ensure all models are registered
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bricdoc")
 
-# Create tables
+# Create tables and sync schema migrations
 Base.metadata.create_all(bind=engine)
+try:
+    sync_schema_migrations()
+except Exception as e:
+    logger.warning(f"Schema migration sync check skipped or warning: {e}")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

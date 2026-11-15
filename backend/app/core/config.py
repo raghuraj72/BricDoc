@@ -9,9 +9,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 class Settings(BaseSettings):
     PROJECT_NAME: str = "BricDoc API"
     VERSION: str = "1.0.0"
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     API_V1_STR: str = "/api/v1"
     APP_URL: str = os.getenv("APP_URL", "https://bricdoc-raghuraj.vercel.app")
     
+    @property
+    def is_production(self) -> bool:
+        """Determines whether running in production environment."""
+        return self.ENVIRONMENT.lower() == "production"
+
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "bricdoc-super-secure-production-ready-jwt-secret-key-2026")
     ALGORITHM: str = "HS256"
@@ -45,12 +51,30 @@ class Settings(BaseSettings):
     STORAGE_DIR: str = os.getenv("STORAGE_DIR", str(BASE_DIR / "vault_storage"))
     MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))
     
-    # Cloudflare R2 / AWS S3 Object Storage Credentials (Optional, persistent disk used if not set)
+    # Cloudflare R2 / AWS S3 Object Storage Credentials
     R2_ACCOUNT_ID: Optional[str] = os.getenv("R2_ACCOUNT_ID", None)
     R2_ACCESS_KEY_ID: Optional[str] = os.getenv("R2_ACCESS_KEY_ID", None)
     R2_SECRET_ACCESS_KEY: Optional[str] = os.getenv("R2_SECRET_ACCESS_KEY", None)
     R2_BUCKET_NAME: Optional[str] = os.getenv("R2_BUCKET_NAME", None)
     R2_ENDPOINT_URL: Optional[str] = os.getenv("R2_ENDPOINT_URL", None)
+
+    @property
+    def r2_configured(self) -> bool:
+        """Checks if Cloudflare R2 credentials and bucket are fully configured."""
+        return bool(
+            self.R2_ACCESS_KEY_ID
+            and self.R2_SECRET_ACCESS_KEY
+            and self.R2_BUCKET_NAME
+            and (self.R2_ENDPOINT_URL or self.R2_ACCOUNT_ID)
+        )
+
+    def get_r2_endpoint(self) -> Optional[str]:
+        """Resolves the S3 endpoint URL for Cloudflare R2."""
+        if self.R2_ENDPOINT_URL and self.R2_ENDPOINT_URL.strip():
+            return self.R2_ENDPOINT_URL.strip()
+        if self.R2_ACCOUNT_ID and self.R2_ACCOUNT_ID.strip():
+            return f"https://{self.R2_ACCOUNT_ID.strip()}.r2.cloudflarestorage.com"
+        return None
     
     # AI Provider (Google Gemini)
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY", None)

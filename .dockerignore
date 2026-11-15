@@ -1,0 +1,41 @@
+# Version control and CI
+.git
+.github
+.gitignore
+
+# IDE & Editor files
+.vscode
+.idea
+
+# Node.js and Next.js artifacts
+node_modules
+frontend/node_modules
+frontend/.next
+frontend/out
+.turbo
+
+# Python build and cache artifacts
+__pycache__
+*/__pycache__
+*/*/__pycache__
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache
+.coverage
+htmlcov
+
+# Environment and secrets (injected by host platform)
+.env
+.env.*
+!.env.example
+
+# Local storage and temporary files
+vault_storage
+backend/vault_storage
+*.db
+*.sqlite
+*.sqlite3
+*.log
+tmp
+temp

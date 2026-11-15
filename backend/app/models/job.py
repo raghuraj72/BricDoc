@@ -17,6 +17,7 @@ class ProcessingJob(Base):
     progress_percentage = Column(Integer, default=0)
     
     input_file_name = Column(String(255), nullable=True)
+    parameters = Column(Text, nullable=True)  # JSON-encoded parameters (e.g. password, compression level)
     output_storage_path = Column(String(512), nullable=True)
     output_file_name = Column(String(255), nullable=True)
     output_size_bytes = Column(Integer, nullable=True)
@@ -31,6 +32,17 @@ class ProcessingJob(Base):
 
     user = relationship("User", back_populates="jobs")
     events = relationship("JobEvent", back_populates="job", cascade="all, delete-orphan")
+
+    @property
+    def parsed_parameters(self) -> dict:
+        """Parse parameters JSON string into dictionary safely."""
+        if not self.parameters:
+            return {}
+        try:
+            import json
+            return json.loads(self.parameters)
+        except Exception:
+            return {}
 
 
 class JobEvent(Base):

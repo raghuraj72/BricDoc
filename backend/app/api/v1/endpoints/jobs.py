@@ -17,6 +17,7 @@ router = APIRouter()
 async def submit_job(
     tool_name: str = Form(...),
     file: Optional[UploadFile] = File(None),
+    parameters: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -31,7 +32,8 @@ async def submit_job(
         db=db,
         user_id=current_user.id,
         tool_name=tool_name,
-        input_file_name=input_path
+        input_file_name=input_path,
+        parameters=parameters
     )
     return job
 
