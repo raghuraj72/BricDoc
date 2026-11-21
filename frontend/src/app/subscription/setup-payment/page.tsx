@@ -109,24 +109,31 @@ function SetupPaymentContent() {
   const planTier = planParam === "business" ? "business" : "pro";
   const isIntroPromo = planTier === "pro" && promoParam === "dollar1";
 
-  const proCatalog = paymentConfig?.pricing_catalog?.pro || {
-    intro_price_usd: 1.0,
-    intro_price_inr: 85.0,
-    monthly_price_usd: 12.0,
-    monthly_price_inr: 999.0,
+  const proRaw = paymentConfig?.pricing_catalog?.pro;
+  const proCatalog = {
+    intro_price_usd: Number(proRaw?.intro_price_usd ?? proRaw?.promo_price_usd ?? 1.0),
+    intro_price_inr: Number(proRaw?.intro_price_inr ?? proRaw?.promo_price_inr ?? 85.0),
+    monthly_price_usd: Number(proRaw?.monthly_price_usd ?? proRaw?.price_usd ?? 12.0),
+    monthly_price_inr: Number(proRaw?.monthly_price_inr ?? proRaw?.price_inr ?? 999.0),
   };
 
-  const businessCatalog = paymentConfig?.pricing_catalog?.business || {
-    monthly_price_usd: 39.0,
-    monthly_price_inr: 3299.0,
+  const businessRaw = paymentConfig?.pricing_catalog?.business;
+  const businessCatalog = {
+    monthly_price_usd: Number(businessRaw?.monthly_price_usd ?? businessRaw?.price_usd ?? 39.0),
+    monthly_price_inr: Number(businessRaw?.monthly_price_inr ?? businessRaw?.price_inr ?? 3299.0),
   };
 
-  const taxRate = paymentConfig?.pricing_catalog?.tax_rate_percent || 18.0;
+  const taxRate = Number(
+    paymentConfig?.pricing_catalog?.tax_rate_percent ??
+    paymentConfig?.pricing_catalog?.pro?.current_pricing?.tax_rate_percent ??
+    18.0
+  );
 
   // Amount today calculations
-  const payableInr = planTier === "business"
+  const rawPayable = planTier === "business"
     ? businessCatalog.monthly_price_inr
     : (isIntroPromo ? proCatalog.intro_price_inr : proCatalog.monthly_price_inr);
+  const payableInr = Number(rawPayable || (planTier === "business" ? 3299.0 : (isIntroPromo ? 85.0 : 999.0)));
 
   const subtotalInr = Math.round((payableInr / (1 + taxRate / 100)) * 100) / 100;
   const taxInr = Math.round((payableInr - subtotalInr) * 100) / 100;

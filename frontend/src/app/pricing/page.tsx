@@ -16,19 +16,25 @@ export default function PricingPage() {
       .catch((err) => console.warn("Failed to load pricing config:", err));
   }, []);
 
-  const proCatalog = config?.pricing_catalog?.pro || {
-    intro_price_usd: 1.0,
-    intro_price_inr: 85.0,
-    monthly_price_usd: 12.0,
-    monthly_price_inr: 999.0,
+  const proRaw = config?.pricing_catalog?.pro;
+  const proCatalog = {
+    intro_price_usd: Number(proRaw?.intro_price_usd ?? proRaw?.promo_price_usd ?? 1.0),
+    intro_price_inr: Number(proRaw?.intro_price_inr ?? proRaw?.promo_price_inr ?? 85.0),
+    monthly_price_usd: Number(proRaw?.monthly_price_usd ?? proRaw?.price_usd ?? 12.0),
+    monthly_price_inr: Number(proRaw?.monthly_price_inr ?? proRaw?.price_inr ?? 999.0),
   };
 
-  const businessCatalog = config?.pricing_catalog?.business || {
-    monthly_price_usd: 39.0,
-    monthly_price_inr: 3299.0,
+  const businessRaw = config?.pricing_catalog?.business;
+  const businessCatalog = {
+    monthly_price_usd: Number(businessRaw?.monthly_price_usd ?? businessRaw?.price_usd ?? 39.0),
+    monthly_price_inr: Number(businessRaw?.monthly_price_inr ?? businessRaw?.price_inr ?? 3299.0),
   };
 
-  const taxRate = config?.pricing_catalog?.tax_rate_percent || 18.0;
+  const taxRate = Number(
+    config?.pricing_catalog?.tax_rate_percent ??
+    config?.pricing_catalog?.pro?.current_pricing?.tax_rate_percent ??
+    18.0
+  );
 
   return (
     <div className="max-w-6xl mx-auto py-16 px-4 sm:px-6 lg:px-8 space-y-12">

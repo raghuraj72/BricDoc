@@ -301,7 +301,7 @@ export default function BillingSettingsPage() {
                       {inv.plan_tier}
                     </td>
                     <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
-                      ₹{inv.amount_total_inr.toFixed(2)}
+                      ₹{(inv.amount_total_inr ?? 0).toFixed(2)}
                     </td>
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
@@ -368,7 +368,7 @@ export default function BillingSettingsPage() {
                       {tx.method || "card/upi"}
                     </td>
                     <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
-                      ₹{tx.amount_inr.toFixed(2)}
+                      ₹{(tx.amount_inr ?? 0).toFixed(2)}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${

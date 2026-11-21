@@ -48,6 +48,10 @@ PLANS: Dict[str, Dict[str, Any]] = {
         "promo_price_usd": 1.0,
         "promo_price_inr": 85.0,
         "promo_amount_paise": 8500,  # ₹85.00 for first month
+        "intro_price_usd": 1.0,
+        "intro_price_inr": 85.0,
+        "monthly_price_usd": 12.0,
+        "monthly_price_inr": 999.0,
         "interval": "month",
         "features": [
             "Unlimited files per day",
@@ -77,6 +81,8 @@ PLANS: Dict[str, Dict[str, Any]] = {
         "price_usd": 39.0,
         "price_inr": 3299.0,
         "amount_paise": 329900,  # ₹3,299.00 / month
+        "monthly_price_usd": 39.0,
+        "monthly_price_inr": 3299.0,
         "has_promo": False,
         "interval": "month",
         "features": [

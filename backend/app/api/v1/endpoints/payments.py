@@ -97,7 +97,10 @@ def get_payment_config(current_user: Optional[User] = Depends(get_current_user_o
         "is_configured": is_configured,
         "razorpay_key_id": key_id,
         "mode": mode,
-        "pricing_catalog": catalog,
+        "pricing_catalog": {
+            **catalog,
+            "tax_rate_percent": 18.0
+        },
         "supported_methods": ["upi", "card", "netbanking", "wallet"],
         "user_subscription": user_sub
     }
