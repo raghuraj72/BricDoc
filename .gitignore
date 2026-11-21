@@ -55,3 +55,4 @@ mobile/android/
 
 .vercel
 .env*
+.rocketride/
