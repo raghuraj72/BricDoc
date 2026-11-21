@@ -15,9 +15,11 @@ engine_kwargs = {"pool_pre_ping": True}
 if db_url.startswith("sqlite"):
     connect_args["check_same_thread"] = False
 else:
-    # Production PostgreSQL pool settings
+    # Production PostgreSQL pool settings (optimized for serverless Neon pooler)
     engine_kwargs["pool_size"] = 10
     engine_kwargs["max_overflow"] = 20
+    engine_kwargs["pool_recycle"] = 300
+    engine_kwargs["pool_timeout"] = 30
 
 engine = create_engine(
     db_url,
